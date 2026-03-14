@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Список желаний</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Top bar -->
+    <header id="topbar">
+      <h1 id="view-title">Список желаний</h1>
+      <button id="btn-add" class="btn-fab" title="Добавить желание">＋</button>
+    </header>
+
+    <!-- Views -->
+    <main id="main">
+
+      <!-- LIST VIEW -->
+      <section id="view-list" class="view active">
+        <div class="filter-tabs">
+          <button class="filter-tab active" data-filter="all">Все</button>
+          <button class="filter-tab" data-filter="place">📍 Места</button>
+          <button class="filter-tab" data-filter="experience">✨ Впечатления</button>
+          <button class="filter-tab" data-filter="material">🎁 Вещи</button>
+        </div>
+        <div id="wish-list" class="wish-list">
+          <!-- cards rendered by JS -->
+        </div>
+        <div id="empty-state" class="empty-state hidden">
+          <div class="empty-icon">🌟</div>
+          <p>Здесь пока пусто.<br>Добавьте первое желание!</p>
+        </div>
+      </section>
+
+      <!-- MAP VIEW -->
+      <section id="view-map" class="view">
+        <div id="main-map"></div>
+        <div id="map-hint" class="map-hint">Нажмите на маркер, чтобы добавить место в маршрут</div>
+      </section>
+
+      <!-- ROUTE VIEW -->
+      <section id="view-route" class="view">
+        <div id="route-map"></div>
+        <div id="route-panel" class="route-panel">
+          <div id="route-selected-list" class="route-selected-list">
+            <!-- selected places list -->
+          </div>
+          <div id="route-empty" class="route-empty">
+            <p>Выберите места на карте, чтобы построить маршрут</p>
+            <button class="btn-secondary" onclick="App.switchView('map')">Перейти на карту</button>
+          </div>
+          <div id="route-actions" class="route-actions hidden">
+            <div id="route-info" class="route-info"></div>
+            <button id="btn-build-route" class="btn-primary">🗺 Построить маршрут</button>
+            <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
+            <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom nav -->
+    <nav id="bottom-nav">
+      <button class="nav-btn active" data-view="list">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Список</span>
+      </button>
+      <button class="nav-btn" data-view="map">
+        <span class="nav-icon">🗺</span>
+        <span class="nav-label">Карта</span>
+      </button>
+      <button class="nav-btn" data-view="route">
+        <span class="nav-icon">🧭</span>
+        <span class="nav-label">Маршрут</span>
+        <span id="route-badge" class="route-badge hidden">0</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ADD/EDIT MODAL -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="modal-overlay"></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2 id="modal-title">Новое желание</h2>
+        <button class="btn-close" id="btn-modal-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="wish-form" novalidate>
+          <input type="hidden" name="id">
+
+          <!-- Category selector -->
+          <div class="category-tabs form-group">
+            <button type="button" class="cat-tab" data-cat="place">📍 Место</button>
+            <button type="button" class="cat-tab" data-cat="experience">✨ Впечатление</button>
+            <button type="button" class="cat-tab active" data-cat="material">🎁 Вещь</button>
+          </div>
+          <input type="hidden" name="category" value="material">
+
+          <div class="form-group">
+            <input class="form-input" name="title" placeholder="Название *" required autocomplete="off">
+          </div>
+          <div class="form-group">
+            <textarea class="form-input form-textarea" name="description" placeholder="Описание (опционально)" rows="2"></textarea>
+          </div>
+
+          <!-- MATERIAL fields -->
+          <div class="fields-material form-fields">
+            <div class="form-group">
+              <input class="form-input" name="shopUrl" type="url" placeholder="Ссылка на магазин" autocomplete="off">
+            </div>
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <input class="form-input" name="price" type="number" min="0" step="0.01" placeholder="Цена (₽)">
+              </div>
+            </div>
+            <div class="form-group">
+              <input class="form-input" name="imageUrl" type="url" placeholder="Ссылка на изображение" autocomplete="off">
+            </div>
+          </div>
+
+          <!-- PLACE fields -->
+          <div class="fields-place form-fields hidden">
+            <div class="form-group">
+              <select class="form-input form-select" name="placeType">
+                <option value="museum">🏛 Музей</option>
+                <option value="cafe">☕ Кафе</option>
+                <option value="restaurant">🍽 Ресторан</option>
+                <option value="park">🌳 Парк</option>
+                <option value="shop">🛍 Магазин</option>
+                <option value="other">📌 Другое</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <input class="form-input" name="priceText" placeholder="Цены (напр. 200–500 ₽ или Бесплатно)">
+            </div>
+            <div class="form-group">
+              <input class="form-input" name="website" type="url" placeholder="Сайт">
+            </div>
+          </div>
+
+          <!-- EXPERIENCE fields -->
+          <div class="fields-experience form-fields hidden">
+            <div class="form-group">
+              <input class="form-input" name="priceText" placeholder="Цены (опционально)">
+            </div>
+            <div class="form-group">
+              <input class="form-input" name="website" type="url" placeholder="Сайт (опционально)">
+            </div>
+          </div>
+
+          <!-- LOCATION (place=required, experience=optional) -->
+          <div id="location-section" class="form-group hidden">
+            <div class="location-search-wrap">
+              <input class="form-input" id="location-search" placeholder="Поиск адреса..." autocomplete="off">
+              <button type="button" id="btn-geo-search" class="btn-search">🔍</button>
+            </div>
+            <div id="geocode-results" class="geocode-results hidden"></div>
+            <div id="location-map-container">
+              <div id="location-map"></div>
+              <p class="location-hint">или нажмите на карту, чтобы поставить метку</p>
+            </div>
+            <div id="location-display" class="location-display hidden">
+              <span id="location-text"></span>
+              <button type="button" id="btn-clear-location" class="btn-ghost-small">✕</button>
+            </div>
+            <input type="hidden" name="locationLat">
+            <input type="hidden" name="locationLng">
+            <input type="hidden" name="locationAddress">
+          </div>
+
+          <!-- Priority -->
+          <div class="form-group priority-group">
+            <span class="form-label">Приоритет:</span>
+            <div class="priority-options">
+              <label class="priority-option">
+                <input type="radio" name="priority" value="1">
+                <span>Низкий</span>
+              </label>
+              <label class="priority-option">
+                <input type="radio" name="priority" value="2" checked>
+                <span>Средний</span>
+              </label>
+              <label class="priority-option">
+                <input type="radio" name="priority" value="3">
+                <span>Высокий</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary btn-full">Сохранить</button>
+            <button type="button" id="btn-delete-wish" class="btn-danger btn-full hidden">Удалить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISIT MODAL -->
+  <div id="visit-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="visit-modal-overlay"></div>
+    <div class="modal-sheet modal-sheet-small">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2 id="visit-modal-title">Отметить посещение</h2>
+        <button class="btn-close" id="btn-visit-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="visit-form" novalidate>
+          <input type="hidden" name="wishId">
+          <input type="hidden" name="visitId">
+
+          <div class="form-group">
+            <label class="form-label">Оценка *</label>
+            <div class="star-input" id="star-input">
+              <button type="button" class="star" data-value="1">★</button>
+              <button type="button" class="star" data-value="2">★</button>
+              <button type="button" class="star" data-value="3">★</button>
+              <button type="button" class="star" data-value="4">★</button>
+              <button type="button" class="star" data-value="5">★</button>
+            </div>
+            <input type="hidden" name="rating" required>
+          </div>
+
+          <div class="form-group">
+            <textarea class="form-input form-textarea" name="review" placeholder="Отзыв (опционально)" rows="2"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" name="hasIssue" id="hasIssue"> ⚠️ Была проблема
+            </label>
+          </div>
+          <div class="form-group hidden" id="issue-group">
+            <input class="form-input" name="issue" placeholder="Опишите проблему (напр. вода за 500 ₽)">
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary btn-full">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
