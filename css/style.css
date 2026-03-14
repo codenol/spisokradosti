@@ -358,6 +358,7 @@ a { color: inherit; }
   margin-top: 8px;
 }
 .card-footer button { flex: 1; }
+.card-footer .btn-icon-only { flex: 0 0 auto; padding: 0 10px; }
 
 /* Visit history accordion */
 .visits-accordion {
@@ -870,6 +871,15 @@ a { color: inherit; }
   background: var(--bg);
   color: var(--text-muted);
   border: 1px solid var(--border);
+}
+.btn-card-route {
+  background: var(--bg);
+  color: var(--color-experience);
+  border: 1px solid var(--color-experience);
+}
+.btn-card-route-active {
+  background: var(--color-experience);
+  color: #fff;
 }
 
 /* ===== Custom map markers ===== */

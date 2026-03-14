@@ -186,10 +186,13 @@ const App = (() => {
         ${metaItems.length > 0 ? `<div class="card-meta">${metaItems.join(' · ')}</div>` : ''}
         ${starsHtml || visitCountHtml ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${starsHtml}${visitCountHtml}</div>` : ''}
         ${!_isReadOnly() ? `<div class="card-footer">
+          ${item.category === 'place' && item.location ? `<button class="btn-card btn-card-route btn-sm" onclick="App.addToRouteFromList('${item.id}',this)">${icon('plus', 'icon-sm')} Маршрут</button>` : ''}
           <button class="btn-card btn-card-primary btn-sm" onclick="App.openVisitModal('${item.id}')">
-            ${visited ? `${icon('check', 'icon-sm')} Отметить снова` : `${icon('plus', 'icon-sm')} Отметить`}
+            ${icon('star', 'icon-sm')} Оценить
           </button>
-          <button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>
+          ${item.category === 'place'
+            ? `<button class="btn-card btn-card-secondary btn-sm btn-icon-only" onclick="App.openEditModal('${item.id}')" title="Изменить">${icon('pencil', 'icon-sm')}</button>`
+            : `<button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>`}
         </div>` : ''}
         ${visitsHtml}
       </div>
@@ -546,6 +549,17 @@ const App = (() => {
     } catch {
       resultsEl.innerHTML = '<div class="geocode-result-item">Ошибка поиска</div>';
     }
+  }
+
+  function addToRouteFromList(id, btn) {
+    MapModule.toggleRouteSelect(id);
+    const inRoute = MapModule.getSelected().includes(id);
+    btn.classList.toggle('btn-card-route-active', inRoute);
+    btn.innerHTML = inRoute
+      ? `${icon('check', 'icon-sm')} В маршруте`
+      : `${icon('plus', 'icon-sm')} Маршрут`;
+    lucide.createIcons({ nodes: [btn] });
+    if (currentView === 'route') renderRoutePanel();
   }
 
   // ===================== ROUTE PANEL =====================
@@ -1398,6 +1412,7 @@ const App = (() => {
     loadSavedRoute,
     deleteSavedRoute,
     openWalkAddModal,
+    addToRouteFromList,
     // multi-user
     switchToList,
     switchToOwnList,
