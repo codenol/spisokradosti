@@ -72,6 +72,26 @@ a { color: inherit; }
   font-weight: 700;
   letter-spacing: -0.3px;
 }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn-icon:hover { opacity: 1; background: var(--border); }
 .btn-fab {
   width: 36px;
   height: 36px;
@@ -762,6 +782,49 @@ a { color: inherit; }
 .map-popup-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
 .map-popup-actions { display: flex; gap: 6px; }
 .map-popup-actions button { flex: 1; font-size: 12px; padding: 6px 8px; }
+
+/* ===== Settings modal ===== */
+.settings-section {
+  margin-bottom: 20px;
+}
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-item:last-child { border-bottom: none; }
+.settings-item-info { flex: 1; min-width: 0; }
+.settings-item-name { font-size: 14px; font-weight: 500; }
+.settings-item-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+.settings-import-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.settings-status {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+.settings-status-success { background: #E8F8F0; color: var(--color-place); }
+.settings-status-error { background: #FEF0F0; color: var(--color-issue); }
 
 /* ===== Walk view ===== */
 #view-walk {

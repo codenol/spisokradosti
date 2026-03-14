@@ -715,6 +715,80 @@ const App = (() => {
     else renderWalkRouteSection();
   }
 
+  // ===================== SETTINGS =====================
+
+  function openSettingsModal() {
+    document.getElementById('settings-status').classList.add('hidden');
+    openModal('settings-modal');
+  }
+
+  function exportData() {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      items: JSON.parse(localStorage.getItem('wishlist_v1') || '[]'),
+      routes: JSON.parse(localStorage.getItem('wishlist_routes_v1') || '[]'),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wishlist_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showSettingsStatus('✅ Файл сохранён', 'success');
+  }
+
+  function handleImportFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.items || !Array.isArray(data.items)) throw new Error('bad format');
+        const itemCount = data.items.length;
+        const routeCount = (data.routes || []).length;
+        const msg = `Найдено: ${itemCount} мест${routeCount ? ` и ${routeCount} маршрутов` : ''}.\nТекущие данные будут заменены. Продолжить?`;
+        if (!confirm(msg)) return;
+        localStorage.setItem('wishlist_v1', JSON.stringify(data.items));
+        localStorage.setItem('wishlist_routes_v1', JSON.stringify(data.routes || []));
+        closeModal('settings-modal');
+        renderList();
+        const mapItems = Storage.getAll();
+        MapModule.renderMarkers(mapItems);
+        if (currentView === 'route') renderRoutePanel();
+        if (currentView === 'walk') MapModule.renderWalkMarkers(mapItems);
+        showSettingsStatus(`✅ Загружено: ${itemCount} мест`, 'success');
+      } catch {
+        showSettingsStatus('❌ Ошибка: неверный формат файла', 'error');
+      }
+    };
+    reader.readAsText(file);
+    // reset so same file can be re-selected
+    document.getElementById('input-import').value = '';
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить ВСЕ данные? Это действие нельзя отменить.')) return;
+    localStorage.removeItem('wishlist_v1');
+    localStorage.removeItem('wishlist_routes_v1');
+    MapModule.clearRouteSelection();
+    MapModule.clearWalkSelection();
+    MapModule.clearActiveRoute();
+    closeModal('settings-modal');
+    renderList();
+    MapModule.renderMarkers([]);
+    if (currentView === 'route') renderRoutePanel();
+  }
+
+  function showSettingsStatus(msg, type) {
+    const el = document.getElementById('settings-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `settings-status settings-status-${type}`;
+    setTimeout(() => el.classList.add('hidden'), 3500);
+  }
+
   // ===================== UTILS =====================
 
   function escHtml(str) {
@@ -724,6 +798,14 @@ const App = (() => {
   // ===================== INIT =====================
 
   function init() {
+    // Settings
+    document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+    document.getElementById('btn-settings-close').addEventListener('click', () => closeModal('settings-modal'));
+    document.getElementById('settings-modal-overlay').addEventListener('click', () => closeModal('settings-modal'));
+    document.getElementById('btn-export').addEventListener('click', exportData);
+    document.getElementById('input-import').addEventListener('change', e => handleImportFile(e.target.files[0]));
+    document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
+
     // Nav
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.addEventListener('click', () => switchView(btn.dataset.view));

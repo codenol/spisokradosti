@@ -14,7 +14,10 @@
     <!-- Top bar -->
     <header id="topbar">
       <h1 id="view-title">Список желаний</h1>
-      <button id="btn-add" class="btn-fab" title="Добавить желание">＋</button>
+      <div class="topbar-actions">
+        <button id="btn-settings" class="btn-icon" title="Настройки">⚙️</button>
+        <button id="btn-add" class="btn-fab" title="Добавить желание">＋</button>
+      </div>
     </header>
 
     <!-- Views -->
@@ -285,6 +288,57 @@
             <button type="submit" class="btn-primary btn-full">Сохранить</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="settings-modal-overlay"></div>
+    <div class="modal-sheet modal-sheet-small">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2>Настройки</h2>
+        <button class="btn-close" id="btn-settings-close" aria-label="Закрыть">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="settings-section">
+          <div class="settings-section-title">Данные</div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Экспорт базы данных</div>
+              <div class="settings-item-desc">Скачать все места и маршруты в файл JSON</div>
+            </div>
+            <button id="btn-export" class="btn-secondary btn-sm">⬇ Скачать</button>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Импорт базы данных</div>
+              <div class="settings-item-desc">Загрузить данные из ранее сохранённого файла</div>
+            </div>
+            <label class="btn-secondary btn-sm settings-import-label">
+              ⬆ Загрузить
+              <input type="file" id="input-import" accept=".json" style="display:none">
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">Опасная зона</div>
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Очистить все данные</div>
+              <div class="settings-item-desc">Удалить все места, посещения и маршруты</div>
+            </div>
+            <button id="btn-clear-all" class="btn-danger btn-sm">Очистить</button>
+          </div>
+        </div>
+
+        <div id="settings-status" class="settings-status hidden"></div>
+
       </div>
     </div>
   </div>
