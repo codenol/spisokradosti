@@ -493,6 +493,33 @@ const App = (() => {
   // ===================== ROUTE PANEL =====================
 
   function renderRoutePanel() {
+    // --- Saved routes ---
+    const routes = Storage.getAllRoutes();
+    const savedSection = document.getElementById('saved-routes-section');
+    const savedList = document.getElementById('saved-routes-list');
+    const activeId = MapModule.getActiveRouteId();
+
+    if (routes.length > 0) {
+      savedSection.classList.remove('hidden');
+      savedList.innerHTML = routes.map(r => {
+        const active = r.id === activeId;
+        const stops = r.placeNames ? r.placeNames.length : 0;
+        const stopWord = stops === 1 ? 'место' : stops < 5 ? 'места' : 'мест';
+        return `<div class="saved-route-item${active ? ' active' : ''}" onclick="App.loadSavedRoute('${r.id}')">
+          <div class="saved-route-icon">🚶</div>
+          <div class="saved-route-body">
+            <div class="saved-route-name">${escHtml(r.name)}</div>
+            <div class="saved-route-meta">${stops} ${stopWord}${active ? '' : ''}</div>
+          </div>
+          <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">✕</button>
+        </div>`;
+      }).join('');
+    } else {
+      savedSection.classList.add('hidden');
+      document.getElementById('saved-route-info').textContent = '';
+    }
+
+    // --- Manual selection ---
     const selected = MapModule.getSelected();
     const items = Storage.getAll();
     const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
@@ -522,6 +549,19 @@ const App = (() => {
         </div>
         <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">✕</button>
       </div>`).join('');
+  }
+
+  function loadSavedRoute(id) {
+    const route = Storage.getRouteById(id);
+    if (!route) return;
+    MapModule.loadSavedRoute(route);
+    renderRoutePanel();
+  }
+
+  function deleteSavedRoute(id) {
+    Storage.removeRoute(id);
+    if (MapModule.getActiveRouteId() === id) MapModule.clearActiveRoute();
+    renderRoutePanel();
   }
 
   function updateRouteBadge(count) {
@@ -620,6 +660,44 @@ const App = (() => {
         </div>
         <button class="btn-remove-from-route" onclick="App.removeFromWalk('${item.id}')" title="Убрать">✕</button>
       </div>`).join('');
+  }
+
+  function buildAndSaveWalkRoute() {
+    const walkSel = MapModule.getWalkSelected();
+    if (walkSel.length === 0) return;
+    const userLoc = MapModule.getUserLocation();
+    if (!userLoc) return;
+
+    const items = Storage.getAll();
+    const selectedItems = walkSel.map(id => items.find(i => i.id === id)).filter(i => i && i.location);
+    if (selectedItems.length === 0) return;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    const route = {
+      id: Storage.genId(),
+      name: `Гуляем ${dateStr} ${timeStr}`,
+      createdAt: Date.now(),
+      userLocation: userLoc,
+      placeIds: selectedItems.map(i => i.id),
+      placeNames: selectedItems.map(i => i.title),
+      waypoints: [
+        { lat: userLoc.lat, lng: userLoc.lng },
+        ...selectedItems.map(i => ({ lat: i.location.lat, lng: i.location.lng })),
+      ],
+    };
+
+    Storage.saveRoute(route);
+    MapModule.clearWalkSelection();
+    MapModule.clearWalkRoute();
+
+    switchView('route');
+    setTimeout(() => {
+      MapModule.loadSavedRoute(route);
+      renderRoutePanel();
+    }, 150);
   }
 
   function toggleWalkItem(id) {
@@ -723,9 +801,7 @@ const App = (() => {
     });
 
     // Walk buttons
-    document.getElementById('btn-walk-build').addEventListener('click', () => {
-      MapModule.buildWalkRoute(Storage.getAll());
-    });
+    document.getElementById('btn-walk-build').addEventListener('click', buildAndSaveWalkRoute);
     document.getElementById('btn-walk-clear').addEventListener('click', () => {
       MapModule.clearWalkSelection();
       MapModule.clearWalkRoute();
@@ -778,6 +854,9 @@ const App = (() => {
     showIssuePopup,
     toggleWalkItem,
     removeFromWalk,
+    renderRoutePanel,
+    loadSavedRoute,
+    deleteSavedRoute,
   };
 })();
 

@@ -81,5 +81,29 @@ const Storage = (() => {
     return Array.isArray(item.visits) && item.visits.length > 0;
   }
 
-  return { getAll, getById, save, remove, addVisit, removeVisit, genId, avgRating, hasIssue, latestIssue, wasVisited };
+  // --- Saved routes ---
+  const ROUTES_KEY = 'wishlist_routes_v1';
+
+  function getAllRoutes() {
+    try { return JSON.parse(localStorage.getItem(ROUTES_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+
+  function saveRoute(route) {
+    const routes = getAllRoutes();
+    const idx = routes.findIndex(r => r.id === route.id);
+    if (idx >= 0) routes[idx] = route; else routes.unshift(route);
+    localStorage.setItem(ROUTES_KEY, JSON.stringify(routes));
+    return route;
+  }
+
+  function removeRoute(id) {
+    localStorage.setItem(ROUTES_KEY, JSON.stringify(getAllRoutes().filter(r => r.id !== id)));
+  }
+
+  function getRouteById(id) {
+    return getAllRoutes().find(r => r.id === id) || null;
+  }
+
+  return { getAll, getById, save, remove, addVisit, removeVisit, genId, avgRating, hasIssue, latestIssue, wasVisited, getAllRoutes, saveRoute, removeRoute, getRouteById };
 })();

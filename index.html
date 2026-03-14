@@ -47,19 +47,29 @@
       <section id="view-route" class="view">
         <div id="route-map"></div>
         <div id="route-panel" class="route-panel">
-          <div id="route-selected-list" class="route-selected-list">
-            <!-- selected places list -->
+
+          <!-- Saved walk routes -->
+          <div id="saved-routes-section" class="hidden">
+            <div class="panel-section-label">Маршруты из «Гуляю»</div>
+            <div id="saved-routes-list" class="saved-routes-list"></div>
+            <div id="saved-route-info" class="route-info saved-route-info-bar"></div>
           </div>
-          <div id="route-empty" class="route-empty">
-            <p>Выберите места на карте, чтобы построить маршрут</p>
-            <button class="btn-secondary" onclick="App.switchView('map')">Перейти на карту</button>
+
+          <!-- Manual selection from map -->
+          <div id="manual-route-section">
+            <div id="route-selected-list" class="route-selected-list"></div>
+            <div id="route-empty" class="route-empty">
+              <p>Выберите места на карте, чтобы построить маршрут</p>
+              <button class="btn-secondary" onclick="App.switchView('map')">Перейти на карту</button>
+            </div>
+            <div id="route-actions" class="route-actions hidden">
+              <div id="route-info" class="route-info"></div>
+              <button id="btn-build-route" class="btn-primary">🗺 Построить маршрут</button>
+              <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
+              <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
+            </div>
           </div>
-          <div id="route-actions" class="route-actions hidden">
-            <div id="route-info" class="route-info"></div>
-            <button id="btn-build-route" class="btn-primary">🗺 Построить маршрут</button>
-            <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
-            <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
-          </div>
+
         </div>
       </section>
 

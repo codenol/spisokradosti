@@ -6,6 +6,7 @@ const MapModule = (() => {
   let routeMap = null;
   let locationMap = null;
   let walkMap = null;
+  let activeRouteId = null;
   let locationMarker = null;
   let mainMarkers = {}; // id → L.Marker
   let walkMarkers = {}; // id → L.Marker
@@ -388,6 +389,7 @@ const MapModule = (() => {
       draggableWaypoints: false,
       fitSelectedRoutes: true,
       showAlternatives: false,
+      show: false,
       lineOptions: { styles: [{ color: '#27AE60', weight: 5, opacity: 0.8 }] },
       createMarker: (i, wp) => {
         const item = located[i];
@@ -444,6 +446,7 @@ const MapModule = (() => {
       draggableWaypoints: false,
       fitSelectedRoutes: true,
       showAlternatives: false,
+      show: false,
       lineOptions: { styles: [{ color: '#2980B9', weight: 5, opacity: 0.8 }] },
       createMarker: (i, wp) => {
         if (i === 0) {
@@ -483,6 +486,70 @@ const MapModule = (() => {
   function clearWalkRoute() {
     if (walkRouteControl) { walkRouteControl.remove(); walkRouteControl = null; }
     const infoEl = document.getElementById('walk-route-info');
+    if (infoEl) infoEl.textContent = '';
+  }
+
+  // --- Load a saved route on the route map ---
+  function loadSavedRoute(savedRoute) {
+    if (!routeMap) initRouteMap();
+    if (routeControl) { routeControl.remove(); routeControl = null; }
+    activeRouteId = savedRoute.id;
+
+    const waypoints = savedRoute.waypoints.map(w => L.latLng(w.lat, w.lng));
+
+    routeControl = L.Routing.control({
+      waypoints,
+      routeWhileDragging: false,
+      addWaypoints: false,
+      draggableWaypoints: false,
+      fitSelectedRoutes: true,
+      showAlternatives: false,
+      show: false,
+      lineOptions: { styles: [{ color: '#2980B9', weight: 5, opacity: 0.8 }] },
+      createMarker: (i, wp) => {
+        if (i === 0) {
+          return L.marker(wp.latLng, {
+            icon: L.divIcon({
+              className: '',
+              html: '<div class="user-location-marker"></div>',
+              iconSize: [20, 20], iconAnchor: [10, 10],
+            }),
+            zIndexOffset: 1000,
+          }).bindPopup('<div class="map-popup"><div class="map-popup-title">📍 Начало</div></div>');
+        }
+        const placeId = savedRoute.placeIds && savedRoute.placeIds[i - 1];
+        const item = placeId ? Storage.getById(placeId) : null;
+        const name = (savedRoute.placeNames && savedRoute.placeNames[i - 1]) || `Точка ${i}`;
+        const icon = item ? iconForWalk(item) : createIcon('marker-place', '📍');
+        return L.marker(wp.latLng, { icon }).bindPopup(
+          `<div class="map-popup"><div class="map-popup-title">${escHtml(name)}</div></div>`
+        );
+      },
+    }).addTo(routeMap);
+
+    routeControl.on('routesfound', (e) => {
+      const route = e.routes[0];
+      const dist = route.summary.totalDistance;
+      const walkMins = Math.round(dist / 83.3);
+      const distStr = dist < 1000 ? `${Math.round(dist)} м` : `${(dist / 1000).toFixed(1)} км`;
+      const timeStr = walkMins >= 60
+        ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин`
+        : `${walkMins} мин`;
+      const infoEl = document.getElementById('saved-route-info');
+      if (infoEl) infoEl.textContent = `🚶 ${distStr} · ~${timeStr} пешком`;
+    });
+
+    routeControl.on('routingerror', () => {
+      const infoEl = document.getElementById('saved-route-info');
+      if (infoEl) infoEl.textContent = 'Не удалось построить маршрут';
+    });
+  }
+
+  function getActiveRouteId() { return activeRouteId; }
+  function clearActiveRoute() {
+    activeRouteId = null;
+    if (routeControl) { routeControl.remove(); routeControl = null; }
+    const infoEl = document.getElementById('saved-route-info');
     if (infoEl) infoEl.textContent = '';
   }
 
@@ -559,6 +626,9 @@ const MapModule = (() => {
     clearRoute,
     buildWalkRoute,
     clearWalkRoute,
+    loadSavedRoute,
+    getActiveRouteId,
+    clearActiveRoute,
     getGoogleMapsUrl,
     geocode,
     reverseGeocode,
