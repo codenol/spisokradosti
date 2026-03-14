@@ -62,26 +62,52 @@
         <div id="route-map"></div>
         <div id="route-panel" class="route-panel">
 
-          <!-- Saved walk routes -->
-          <div id="saved-routes-section" class="hidden">
-            <div class="panel-section-label">Маршруты из «Гуляю»</div>
-            <div id="saved-routes-list" class="saved-routes-list"></div>
-            <div id="saved-route-info" class="route-info saved-route-info-bar"></div>
+          <!-- Empty state: no routes at all -->
+          <div id="routes-all-empty" class="routes-all-empty hidden">
+            <div class="routes-empty-icon">🧭</div>
+            <div class="routes-empty-title">Маршрутов пока нет</div>
+            <div class="routes-empty-subtitle">Создайте маршрут одним из способов:</div>
+            <div class="routes-onboarding">
+              <div class="routes-onboarding-card" onclick="App.switchView('walk')">
+                <div class="routes-onboarding-icon">🚶</div>
+                <div class="routes-onboarding-body">
+                  <div class="routes-onboarding-title">Режим «Гуляю»</div>
+                  <div class="routes-onboarding-desc">Откройте вкладку «Гуляю», выберите места рядом и нажмите «Построить маршрут»</div>
+                </div>
+                <span class="routes-onboarding-arrow">›</span>
+              </div>
+              <div class="routes-onboarding-card" onclick="App.switchView('map')">
+                <div class="routes-onboarding-icon">🗺</div>
+                <div class="routes-onboarding-body">
+                  <div class="routes-onboarding-title">С карты</div>
+                  <div class="routes-onboarding-desc">На карте нажмите на маркер → «+ В маршрут», затем выберите «Построить маршрут»</div>
+                </div>
+                <span class="routes-onboarding-arrow">›</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Manual selection from map -->
-          <div id="manual-route-section">
-            <div id="route-selected-list" class="route-selected-list"></div>
-            <div id="route-empty" class="route-empty">
-              <p>Выберите места на карте, чтобы построить маршрут</p>
-              <button class="btn-secondary" onclick="App.switchView('map')">Перейти на карту</button>
+          <!-- Has content -->
+          <div id="routes-has-content" class="hidden">
+
+            <!-- Saved routes list -->
+            <div id="saved-routes-section">
+              <div id="saved-routes-list" class="saved-routes-list"></div>
+              <div id="saved-route-info" class="route-info saved-route-info-bar"></div>
             </div>
-            <div id="route-actions" class="route-actions hidden">
-              <div id="route-info" class="route-info"></div>
-              <button id="btn-build-route" class="btn-primary">🗺 Построить маршрут</button>
-              <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
-              <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
+
+            <!-- Manual selection from map (if any) -->
+            <div id="manual-route-section" class="hidden">
+              <div class="panel-section-label">Выбрано на карте</div>
+              <div id="route-selected-list" class="route-selected-list"></div>
+              <div id="route-actions" class="route-actions">
+                <div id="route-info" class="route-info"></div>
+                <button id="btn-build-route" class="btn-primary">🗺 Построить маршрут</button>
+                <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
+                <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
+              </div>
             </div>
+
           </div>
 
         </div>
@@ -124,7 +150,7 @@
       </button>
       <button class="nav-btn" data-view="route">
         <span class="nav-icon">🧭</span>
-        <span class="nav-label">Маршрут</span>
+        <span class="nav-label">Маршруты</span>
         <span id="route-badge" class="route-badge hidden">0</span>
       </button>
       <button class="nav-btn" data-view="walk">

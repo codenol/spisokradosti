@@ -20,7 +20,7 @@ const App = (() => {
 
     currentView = name;
 
-    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршрут', walk: 'Гуляю' };
+    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршруты', walk: 'Гуляю' };
     document.getElementById('view-title').textContent = titles[name] || '';
 
     if (name === 'map') {
@@ -530,62 +530,55 @@ const App = (() => {
   // ===================== ROUTE PANEL =====================
 
   function renderRoutePanel() {
-    // --- Saved routes ---
     const routes = Storage.getAllRoutes();
-    const savedSection = document.getElementById('saved-routes-section');
-    const savedList = document.getElementById('saved-routes-list');
+    const selected = MapModule.getSelected();
     const activeId = MapModule.getActiveRouteId();
 
-    if (routes.length > 0) {
-      savedSection.classList.remove('hidden');
-      savedList.innerHTML = routes.map(r => {
-        const active = r.id === activeId;
-        const stops = r.placeNames ? r.placeNames.length : 0;
-        const stopWord = stops === 1 ? 'место' : stops < 5 ? 'места' : 'мест';
-        return `<div class="saved-route-item${active ? ' active' : ''}" onclick="App.loadSavedRoute('${r.id}')">
-          <div class="saved-route-icon">🚶</div>
-          <div class="saved-route-body">
-            <div class="saved-route-name">${escHtml(r.name)}</div>
-            <div class="saved-route-meta">${stops} ${stopWord}${active ? '' : ''}</div>
-          </div>
-          <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">✕</button>
-        </div>`;
-      }).join('');
-    } else {
-      savedSection.classList.add('hidden');
+    const isEmpty = routes.length === 0 && selected.length === 0;
+    document.getElementById('routes-all-empty').classList.toggle('hidden', !isEmpty);
+    document.getElementById('routes-has-content').classList.toggle('hidden', isEmpty);
+    updateRouteBadge(routes.length + selected.length);
+
+    if (isEmpty) {
       document.getElementById('saved-route-info').textContent = '';
-    }
-
-    // --- Manual selection ---
-    const selected = MapModule.getSelected();
-    const items = Storage.getAll();
-    const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
-
-    const emptyEl = document.getElementById('route-empty');
-    const actionsEl = document.getElementById('route-actions');
-    const listEl = document.getElementById('route-selected-list');
-
-    updateRouteBadge(selected.length);
-
-    if (selectedItems.length === 0) {
-      emptyEl.classList.remove('hidden');
-      actionsEl.classList.add('hidden');
-      listEl.innerHTML = '';
       return;
     }
 
-    emptyEl.classList.add('hidden');
-    actionsEl.classList.remove('hidden');
-
-    listEl.innerHTML = selectedItems.map((item, i) => `
-      <div class="route-selected-item">
-        <div class="route-item-num">${i + 1}</div>
-        <div style="flex:1">
-          <div class="route-item-name">${escHtml(item.title)}</div>
-          ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
+    // --- Saved routes ---
+    const savedList = document.getElementById('saved-routes-list');
+    savedList.innerHTML = routes.map(r => {
+      const active = r.id === activeId;
+      const stops = r.placeNames ? r.placeNames.length : 0;
+      const stopWord = stops === 1 ? 'место' : stops < 5 ? 'места' : 'мест';
+      return `<div class="saved-route-item${active ? ' active' : ''}" onclick="App.loadSavedRoute('${r.id}')">
+        <div class="saved-route-icon">🚶</div>
+        <div class="saved-route-body">
+          <div class="saved-route-name">${escHtml(r.name)}</div>
+          <div class="saved-route-meta">${stops} ${stopWord}</div>
         </div>
-        <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">✕</button>
-      </div>`).join('');
+        <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">✕</button>
+      </div>`;
+    }).join('');
+
+    // --- Manual selection from map ---
+    const items = Storage.getAll();
+    const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
+    const manualSection = document.getElementById('manual-route-section');
+
+    if (selectedItems.length === 0) {
+      manualSection.classList.add('hidden');
+    } else {
+      manualSection.classList.remove('hidden');
+      document.getElementById('route-selected-list').innerHTML = selectedItems.map((item, i) => `
+        <div class="route-selected-item">
+          <div class="route-item-num">${i + 1}</div>
+          <div style="flex:1">
+            <div class="route-item-name">${escHtml(item.title)}</div>
+            ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
+          </div>
+          <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">✕</button>
+        </div>`).join('');
+    }
   }
 
   function loadSavedRoute(id) {

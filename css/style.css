@@ -463,13 +463,39 @@ a { color: inherit; }
   overflow-y: auto;
   flex-shrink: 0;
 }
-.route-empty {
-  text-align: center;
-  padding: 16px 0;
-  color: var(--text-muted);
-  font-size: 14px;
+.routes-all-empty {
+  padding: 24px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
-.route-empty p { margin-bottom: 12px; }
+.routes-empty-icon { font-size: 40px; margin-bottom: 4px; }
+.routes-empty-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.routes-empty-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.routes-onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.routes-onboarding-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.routes-onboarding-card:hover { border-color: var(--color-place); background: var(--color-place-light); }
+.routes-onboarding-icon { font-size: 28px; flex-shrink: 0; }
+.routes-onboarding-body { flex: 1; min-width: 0; }
+.routes-onboarding-title { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.routes-onboarding-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.routes-onboarding-arrow { font-size: 20px; color: var(--text-muted); flex-shrink: 0; }
 .route-selected-list {
   display: flex;
   flex-direction: column;
