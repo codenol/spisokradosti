@@ -3,6 +3,7 @@
 const App = (() => {
   let currentView = 'list';
   let currentFilter = 'all';
+  let mapTypeFilters = new Set(); // empty = show all
   let issuePopupTimer = null;
 
   // ===================== VIEWS =====================
@@ -24,8 +25,7 @@ const App = (() => {
 
     if (name === 'map') {
       MapModule.invalidateMainMap();
-      const items = Storage.getAll();
-      MapModule.renderMarkers(items);
+      renderFilteredMarkers();
     }
     if (name === 'route') {
       MapModule.invalidateRouteMap();
@@ -42,6 +42,45 @@ const App = (() => {
         }
       );
     }
+  }
+
+  // ===================== MAP FILTERS =====================
+
+  function renderFilteredMarkers() {
+    const all = Storage.getAll();
+    let items;
+    if (mapTypeFilters.size === 0) {
+      items = all;
+    } else {
+      items = all.filter(i => {
+        if (i.category === 'experience') return mapTypeFilters.has('experience');
+        if (i.category === 'place') return mapTypeFilters.has(i.placeType || 'other');
+        return false;
+      });
+    }
+    MapModule.renderMarkers(items);
+  }
+
+  function toggleMapFilter(type) {
+    if (type === 'all') {
+      mapTypeFilters.clear();
+    } else {
+      if (mapTypeFilters.has(type)) {
+        mapTypeFilters.delete(type);
+      } else {
+        mapTypeFilters.add(type);
+      }
+    }
+    // Sync chip active states
+    document.querySelectorAll('.map-filter-chip').forEach(chip => {
+      const t = chip.dataset.type;
+      if (t === 'all') {
+        chip.classList.toggle('active', mapTypeFilters.size === 0);
+      } else {
+        chip.classList.toggle('active', mapTypeFilters.has(t));
+      }
+    });
+    renderFilteredMarkers();
   }
 
   // ===================== LIST RENDER =====================
@@ -370,9 +409,7 @@ const App = (() => {
     Storage.save(item);
     closeModal('modal');
     renderList();
-
-    const mapItems = Storage.getAll();
-    MapModule.renderMarkers(mapItems);
+    renderFilteredMarkers();
     if (currentView === 'route') renderRoutePanel();
     if (currentView === 'walk') {
       MapModule.renderWalkMarkers(mapItems);
@@ -388,7 +425,7 @@ const App = (() => {
     Storage.remove(id);
     closeModal('modal');
     renderList();
-    MapModule.renderMarkers(Storage.getAll());
+    renderFilteredMarkers();
     MapModule.removeFromRoute(id);
     MapModule.removeWalkItem(id);
     if (currentView === 'route') renderRoutePanel();
@@ -754,8 +791,7 @@ const App = (() => {
         localStorage.setItem('wishlist_routes_v1', JSON.stringify(data.routes || []));
         closeModal('settings-modal');
         renderList();
-        const mapItems = Storage.getAll();
-        MapModule.renderMarkers(mapItems);
+        renderFilteredMarkers();
         if (currentView === 'route') renderRoutePanel();
         if (currentView === 'walk') MapModule.renderWalkMarkers(mapItems);
         showSettingsStatus(`✅ Загружено: ${itemCount} мест`, 'success');
@@ -798,6 +834,11 @@ const App = (() => {
   // ===================== INIT =====================
 
   function init() {
+    // Map filter chips
+    document.querySelectorAll('.map-filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => toggleMapFilter(chip.dataset.type));
+    });
+
     // Settings
     document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
     document.getElementById('btn-settings-close').addEventListener('click', () => closeModal('settings-modal'));
