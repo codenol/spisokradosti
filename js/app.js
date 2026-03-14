@@ -6,6 +6,13 @@ const App = (() => {
   let mapTypeFilters = new Set(); // empty = show all
   let issuePopupTimer = null;
 
+  // Lucide icon helper
+  function icon(name, cls = '') {
+    return `<i data-lucide="${name}" class="icon${cls ? ' ' + cls : ''}"></i>`;
+  }
+
+  function icons() { if (window.lucide) lucide.createIcons(); }
+
   // ===================== VIEWS =====================
 
   function switchView(name) {
@@ -38,7 +45,7 @@ const App = (() => {
         (lat, lng) => renderNearbyPanel(lat, lng),
         (err) => {
           const locEl = document.getElementById('walk-locating');
-          if (locEl) locEl.innerHTML = `<p class="walk-error">❌ ${escHtml(err)}</p>`;
+          if (locEl) locEl.innerHTML = `<p class="walk-error">${icon('circle-x', 'icon-sm')} ${escHtml(err)}</p>`;
         }
       );
     }
@@ -85,6 +92,11 @@ const App = (() => {
 
   // ===================== LIST RENDER =====================
 
+  const placeTypeIcons = {
+    museum: 'landmark', mansion: 'castle', cafe: 'coffee',
+    restaurant: 'utensils', park: 'tree-pine', shop: 'shopping-bag', other: 'map-pin',
+  };
+
   function renderList() {
     const items = Storage.getAll();
     const filtered = currentFilter === 'all' ? items : items.filter(i => i.category === currentFilter);
@@ -98,6 +110,7 @@ const App = (() => {
     }
     emptyEl.classList.add('hidden');
     listEl.innerHTML = filtered.map(cardHtml).join('');
+    icons();
     bindCardEvents();
   }
 
@@ -107,13 +120,21 @@ const App = (() => {
     const issue = Storage.hasIssue(item);
     const visits = item.visits || [];
 
-    const categoryLabels = { place: '📍 Место', experience: '✨ Впечатление', material: '🎁 Вещь' };
+    const categoryLabels = {
+      place: `${icon('map-pin', 'icon-sm')} Место`,
+      experience: `${icon('sparkles', 'icon-sm')} Впечатление`,
+      material: `${icon('gift', 'icon-sm')} Вещь`,
+    };
     const categoryBadgeClass = { place: 'badge-place', experience: 'badge-experience', material: 'badge-material' };
     const priorityDots = { 1: 'p1', 2: 'p2', 3: 'p3' };
     const placeTypeLabels = {
-      museum: '🏛 Музей', mansion: '🏰 Особняк/Усадьба',
-      cafe: '☕ Кафе', restaurant: '🍽 Ресторан',
-      park: '🌳 Парк', shop: '🛍 Магазин', other: '📌 Другое',
+      museum: `${icon('landmark', 'icon-sm')} Музей`,
+      mansion: `${icon('castle', 'icon-sm')} Особняк/Усадьба`,
+      cafe: `${icon('coffee', 'icon-sm')} Кафе`,
+      restaurant: `${icon('utensils', 'icon-sm')} Ресторан`,
+      park: `${icon('tree-pine', 'icon-sm')} Парк`,
+      shop: `${icon('shopping-bag', 'icon-sm')} Магазин`,
+      other: `${icon('map-pin', 'icon-sm')} Другое`,
     };
 
     let imageHtml = '';
@@ -123,17 +144,17 @@ const App = (() => {
 
     let metaItems = [];
     if (item.category === 'material') {
-      if (item.price) metaItems.push(`💰 ${formatPrice(item.price)} ₽`);
-      if (item.shopUrl) metaItems.push(`<a href="${escHtml(item.shopUrl)}" target="_blank" rel="noopener">🛒 Магазин</a>`);
+      if (item.price) metaItems.push(`${icon('banknote', 'meta-icon')} ${formatPrice(item.price)} ₽`);
+      if (item.shopUrl) metaItems.push(`<a href="${escHtml(item.shopUrl)}" target="_blank" rel="noopener">${icon('shopping-cart', 'meta-icon')} Магазин</a>`);
     } else if (item.category === 'place') {
       if (item.placeType) metaItems.push(placeTypeLabels[item.placeType] || item.placeType);
-      if (item.priceText) metaItems.push(`💰 ${escHtml(item.priceText)}`);
-      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">🌐 Сайт</a>`);
-      if (item.location) metaItems.push(`<span style="color:#27AE60">📍 ${escHtml(shortAddr(item.location.address))}</span>`);
+      if (item.priceText) metaItems.push(`${icon('banknote', 'meta-icon')} ${escHtml(item.priceText)}`);
+      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">${icon('globe', 'meta-icon')} Сайт</a>`);
+      if (item.location) metaItems.push(`<span style="color:var(--color-place)">${icon('map-pin', 'meta-icon')} ${escHtml(shortAddr(item.location.address))}</span>`);
     } else if (item.category === 'experience') {
-      if (item.priceText) metaItems.push(`💰 ${escHtml(item.priceText)}`);
-      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">🌐 Сайт</a>`);
-      if (item.location) metaItems.push(`<span style="color:#9B59B6">📍 ${escHtml(shortAddr(item.location.address))}</span>`);
+      if (item.priceText) metaItems.push(`${icon('banknote', 'meta-icon')} ${escHtml(item.priceText)}`);
+      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">${icon('globe', 'meta-icon')} Сайт</a>`);
+      if (item.location) metaItems.push(`<span style="color:var(--color-experience)">${icon('map-pin', 'meta-icon')} ${escHtml(shortAddr(item.location.address))}</span>`);
     }
 
     const starsHtml = avg > 0 ? `<span class="stars">${renderStars(avg)}</span> ` : '';
@@ -142,7 +163,7 @@ const App = (() => {
     const visitsHtml = visits.length > 0 ? `
       <div class="visits-accordion">
         <button class="visits-toggle" data-id="${item.id}" onclick="App.toggleVisits('${item.id}',this)">
-          <span class="arrow">▶</span> История (${visits.length})
+          ${icon('chevron-right', 'arrow')} История (${visits.length})
         </button>
         <div class="visits-list" id="visits-${item.id}">
           ${visits.map(v => visitItemHtml(v)).join('')}
@@ -155,7 +176,7 @@ const App = (() => {
         <div class="card-header">
           <span class="card-title${visited ? ' visited' : ''}">${escHtml(item.title)}</span>
           <div class="card-badges">
-            ${issue ? `<span class="badge badge-issue" onclick="App.showIssuePopup('${item.id}')" title="Нажмите, чтобы увидеть проблему">⚠️</span>` : ''}
+            ${issue ? `<span class="badge badge-issue" onclick="App.showIssuePopup('${item.id}')" title="Нажмите, чтобы увидеть проблему">${icon('triangle-alert')}</span>` : ''}
             <span class="badge ${categoryBadgeClass[item.category] || ''}">${categoryLabels[item.category] || item.category}</span>
             <span class="priority-dot ${priorityDots[item.priority] || 'p2'}" title="Приоритет: ${item.priority}"></span>
           </div>
@@ -165,7 +186,7 @@ const App = (() => {
         ${starsHtml || visitCountHtml ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${starsHtml}${visitCountHtml}</div>` : ''}
         <div class="card-footer">
           <button class="btn-card btn-card-primary btn-sm" onclick="App.openVisitModal('${item.id}')">
-            ${visited ? '✓ Отметить снова' : '+ Отметить'}
+            ${visited ? `${icon('check', 'icon-sm')} Отметить снова` : `${icon('plus', 'icon-sm')} Отметить`}
           </button>
           <button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>
         </div>
@@ -183,17 +204,15 @@ const App = (() => {
         <span class="visit-date">${date}</span>
       </div>
       ${v.review ? `<div class="visit-review">${escHtml(v.review)}</div>` : ''}
-      ${v.issue ? `<div class="visit-issue">⚠️ ${escHtml(v.issue)}</div>` : ''}
+      ${v.issue ? `<div class="visit-issue">${icon('triangle-alert', 'icon-sm')} ${escHtml(v.issue)}</div>` : ''}
     </div>`;
   }
 
   function renderStars(avg) {
-    let html = '';
     const rounded = Math.round(avg);
-    for (let i = 1; i <= 5; i++) {
-      html += `<span class="${i <= rounded ? '' : 'empty'}">★</span>`;
-    }
-    return html;
+    return Array.from({length: 5}, (_, i) =>
+      `<i data-lucide="star" class="icon star-display${i < rounded ? ' filled' : ''}"></i>`
+    ).join('');
   }
 
   function visitLabel(n) {
@@ -237,7 +256,8 @@ const App = (() => {
       popup.className = 'issue-popup';
       document.body.appendChild(popup);
     }
-    popup.textContent = `⚠️ ${issue}`;
+    popup.innerHTML = `${icon('triangle-alert', 'icon-sm')} ${escHtml(issue)}`;
+    icons();
     popup.style.display = 'block';
     issuePopupTimer = setTimeout(() => { popup.style.display = 'none'; }, 3500);
   }
@@ -551,12 +571,12 @@ const App = (() => {
       const stops = r.placeNames ? r.placeNames.length : 0;
       const stopWord = stops === 1 ? 'место' : stops < 5 ? 'места' : 'мест';
       return `<div class="saved-route-item${active ? ' active' : ''}" onclick="App.loadSavedRoute('${r.id}')">
-        <div class="saved-route-icon">🚶</div>
+        <div class="saved-route-icon">${icon('route', 'icon-lg')}</div>
         <div class="saved-route-body">
           <div class="saved-route-name">${escHtml(r.name)}</div>
           <div class="saved-route-meta">${stops} ${stopWord}</div>
         </div>
-        <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">✕</button>
+        <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">${icon('x', 'icon-sm')}</button>
       </div>`;
     }).join('');
 
@@ -576,9 +596,10 @@ const App = (() => {
             <div class="route-item-name">${escHtml(item.title)}</div>
             ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
           </div>
-          <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">✕</button>
+          <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">${icon('x', 'icon-sm')}</button>
         </div>`).join('');
     }
+    icons();
   }
 
   function loadSavedRoute(id) {
@@ -622,10 +643,7 @@ const App = (() => {
     if (locEl) locEl.classList.add('hidden');
     if (contentEl) contentEl.classList.remove('hidden');
 
-    const placeTypeEmoji = {
-      museum: '🏛', mansion: '🏰', cafe: '☕', restaurant: '🍽',
-      park: '🌳', shop: '🛍', other: '📌',
-    };
+    const placeTypeEmoji = placeTypeIcons; // reuse icon name map
 
     const items = Storage.getAll().filter(i => i.location && (i.category === 'place' || i.category === 'experience'));
 
@@ -648,19 +666,21 @@ const App = (() => {
         const timeStr = walkMins >= 60
           ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин`
           : `${walkMins} мин`;
-        const emoji = item.category === 'experience' ? '✨' : (placeTypeEmoji[item.placeType] || '📍');
+        const typeIcon = item.category === 'experience'
+          ? icon('sparkles', 'icon-sm') : icon(placeTypeEmoji[item.placeType] || 'map-pin', 'icon-sm');
         const inWalk = walkSel.includes(item.id);
         const nearTag = dist <= 500 ? '<span class="walk-near-tag">Рядом</span>' : '';
         return `<div class="walk-nearby-item${inWalk ? ' selected' : ''}" data-id="${item.id}">
           <div class="walk-nearby-left">
-            <div class="walk-nearby-name">${emoji} ${escHtml(item.title)} ${nearTag}</div>
-            <div class="walk-nearby-dist">📍 ${distStr} · 🚶 ~${timeStr}</div>
+            <div class="walk-nearby-name">${typeIcon} ${escHtml(item.title)} ${nearTag}</div>
+            <div class="walk-nearby-dist">${icon('map-pin', 'meta-icon')} ${distStr} · ${icon('footprints', 'meta-icon')} ~${timeStr}</div>
           </div>
           <button class="walk-nearby-btn${inWalk ? ' active' : ''}" onclick="App.toggleWalkItem('${item.id}')">
-            ${inWalk ? '✓' : '+'}
+            ${inWalk ? icon('check') : icon('plus')}
           </button>
         </div>`;
       }).join('');
+      icons();
     }
 
     renderWalkRouteSection();
@@ -832,7 +852,7 @@ const App = (() => {
     const loc = MapModule.getUserLocation();
     if (loc) renderNearbyPanel(loc.lat, loc.lng);
 
-    showWalkToast('✅ Место добавлено');
+    showWalkToast('Место добавлено');
   }
 
   function showWalkToast(msg) {
@@ -884,7 +904,7 @@ const App = (() => {
     a.download = `wishlist_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    showSettingsStatus('✅ Файл сохранён', 'success');
+    showSettingsStatus('Файл сохранён', 'success');
   }
 
   function handleImportFile(file) {
@@ -905,9 +925,9 @@ const App = (() => {
         renderFilteredMarkers();
         if (currentView === 'route') renderRoutePanel();
         if (currentView === 'walk') MapModule.renderWalkMarkers(mapItems);
-        showSettingsStatus(`✅ Загружено: ${itemCount} мест`, 'success');
+        showSettingsStatus(`Загружено: ${itemCount} мест`, 'success');
       } catch {
-        showSettingsStatus('❌ Ошибка: неверный формат файла', 'error');
+        showSettingsStatus('Ошибка: неверный формат файла', 'error');
       }
     };
     reader.readAsText(file);
@@ -1086,6 +1106,7 @@ const App = (() => {
 
     // Initial render
     renderList();
+    icons();
   }
 
   // Public

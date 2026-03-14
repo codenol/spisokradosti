@@ -49,10 +49,38 @@
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.55);
 }
 [data-theme="dark"] body { background: #0e1012; }
-[data-theme="dark"] .stars .empty { color: #444; }
 [data-theme="dark"] .walk-near-tag { background: var(--color-place-light); }
 [data-theme="dark"] .settings-status-success { background: var(--color-place-light); }
 [data-theme="dark"] .settings-status-error { background: var(--color-issue-light); }
+
+/* ===== Lucide icons ===== */
+.icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; flex-shrink: 0; }
+.icon svg { width: 100%; height: 100%; }
+.icon-sm { width: 14px; height: 14px; }
+.icon-lg { width: 20px; height: 20px; }
+.icon-xl { width: 24px; height: 24px; }
+
+/* Nav icons */
+.nav-icon { display: flex; align-items: center; justify-content: center; }
+.nav-icon .icon { width: 22px; height: 22px; }
+
+/* Star rating input */
+.star { font-size: unset; color: unset; transition: transform 0.1s; padding: 2px; }
+.star .icon { width: 28px; height: 28px; }
+.star .icon svg { stroke: #F39C12; fill: none; transition: fill 0.12s; }
+.star.active .icon svg { fill: #F39C12; }
+.star:active { transform: scale(1.2); }
+
+/* Displayed stars in cards */
+.star-display { width: 14px; height: 14px; }
+.star-display svg { stroke: #F39C12; fill: none; }
+.star-display.filled svg { fill: #F39C12; }
+
+/* Issue badge icon */
+.badge-issue .icon { width: 13px; height: 13px; }
+
+/* Inline meta icons */
+.meta-icon { width: 13px; height: 13px; opacity: 0.7; }
 
 /* ===== Reset ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -345,7 +373,7 @@ a { color: inherit; }
   align-items: center;
   gap: 4px;
 }
-.visits-toggle .arrow { transition: transform 0.2s; }
+.visits-toggle .arrow { transition: transform 0.2s; display: inline-flex; }
 .visits-toggle.open .arrow { transform: rotate(90deg); }
 .visits-list {
   display: none;
