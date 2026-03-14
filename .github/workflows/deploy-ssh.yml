@@ -1,0 +1,43 @@
+name: Deploy to hosting (SSH)
+
+# Triggers on push to main or manually via Actions tab.
+# Requires four repository secrets (Settings → Secrets and variables → Actions):
+#
+#   DEPLOY_HOST   — hostname, e.g. example.com
+#   DEPLOY_USER   — SSH user, e.g. myuser
+#   DEPLOY_KEY    — private SSH key (contents of ~/.ssh/id_ed25519 or id_rsa)
+#   DEPLOY_PATH   — absolute path on server, e.g. /var/www/wishlist
+#
+# One-time server setup:
+#   1. Add the public key to ~/.ssh/authorized_keys on the server
+#   2. After first deploy, open https://example.com/install.php
+#   3. Delete install.php: ssh user@host "rm $DEPLOY_PATH/install.php"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='config.php' \
+            --exclude='deploy.sh' \
+            . ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/
