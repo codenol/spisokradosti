@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+set_exception_handler(function ($e) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    exit;
+});
+
 $configFile = __DIR__ . '/../config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
@@ -25,7 +32,7 @@ function getDb(): PDO
     return $pdo;
 }
 
-function jsonOut(mixed $data, int $code = 200): never
+function jsonOut($data, int $code = 200): void
 {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
