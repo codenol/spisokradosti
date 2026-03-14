@@ -19,7 +19,7 @@ const App = (() => {
 
     currentView = name;
 
-    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршрут' };
+    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршрут', walk: 'Гуляю' };
     document.getElementById('view-title').textContent = titles[name] || '';
 
     if (name === 'map') {
@@ -30,6 +30,17 @@ const App = (() => {
     if (name === 'route') {
       MapModule.invalidateRouteMap();
       renderRoutePanel();
+    }
+    if (name === 'walk') {
+      MapModule.invalidateWalkMap();
+      MapModule.renderWalkMarkers(Storage.getAll());
+      MapModule.startLocating(
+        (lat, lng) => renderNearbyPanel(lat, lng),
+        (err) => {
+          const locEl = document.getElementById('walk-locating');
+          if (locEl) locEl.innerHTML = `<p class="walk-error">❌ ${escHtml(err)}</p>`;
+        }
+      );
     }
   }
 
@@ -60,7 +71,11 @@ const App = (() => {
     const categoryLabels = { place: '📍 Место', experience: '✨ Впечатление', material: '🎁 Вещь' };
     const categoryBadgeClass = { place: 'badge-place', experience: 'badge-experience', material: 'badge-material' };
     const priorityDots = { 1: 'p1', 2: 'p2', 3: 'p3' };
-    const placeTypeLabels = { museum: '🏛 Музей', cafe: '☕ Кафе', restaurant: '🍽 Ресторан', park: '🌳 Парк', shop: '🛍 Магазин', other: '📌 Другое' };
+    const placeTypeLabels = {
+      museum: '🏛 Музей', mansion: '🏰 Особняк/Усадьба',
+      cafe: '☕ Кафе', restaurant: '🍽 Ресторан',
+      park: '🌳 Парк', shop: '🛍 Магазин', other: '📌 Другое',
+    };
 
     let imageHtml = '';
     if (item.category === 'material' && item.imageUrl) {
@@ -253,11 +268,7 @@ const App = (() => {
   function setField(form, name, value) {
     const el = form.elements[name];
     if (!el) return;
-    if (el.tagName === 'SELECT') {
-      el.value = value;
-    } else {
-      el.value = value;
-    }
+    el.value = value;
   }
 
   function selectCategory(cat) {
@@ -270,9 +281,7 @@ const App = (() => {
     if (fieldsEl) fieldsEl.classList.remove('hidden');
 
     const locSection = document.getElementById('location-section');
-    if (cat === 'place') {
-      locSection.classList.remove('hidden');
-    } else if (cat === 'experience') {
+    if (cat === 'place' || cat === 'experience') {
       locSection.classList.remove('hidden');
     } else {
       locSection.classList.add('hidden');
@@ -320,7 +329,6 @@ const App = (() => {
 
     const cat = data.category;
 
-    // Validate location for 'place'
     if (cat === 'place' && !data.locationLat) {
       alert('Пожалуйста, укажите местоположение для места на карте.');
       return;
@@ -366,6 +374,11 @@ const App = (() => {
     const mapItems = Storage.getAll();
     MapModule.renderMarkers(mapItems);
     if (currentView === 'route') renderRoutePanel();
+    if (currentView === 'walk') {
+      MapModule.renderWalkMarkers(mapItems);
+      const loc = MapModule.getUserLocation();
+      if (loc) renderNearbyPanel(loc.lat, loc.lng);
+    }
   }
 
   function handleDeleteWish() {
@@ -377,7 +390,13 @@ const App = (() => {
     renderList();
     MapModule.renderMarkers(Storage.getAll());
     MapModule.removeFromRoute(id);
+    MapModule.removeWalkItem(id);
     if (currentView === 'route') renderRoutePanel();
+    if (currentView === 'walk') {
+      MapModule.renderWalkMarkers(Storage.getAll());
+      const loc = MapModule.getUserLocation();
+      if (loc) renderNearbyPanel(loc.lat, loc.lng);
+    }
   }
 
   // ===================== VISIT MODAL =====================
@@ -439,8 +458,6 @@ const App = (() => {
 
   // ===================== GEOCODING =====================
 
-  let geocodeDebounce = null;
-
   async function handleGeoSearch() {
     const query = document.getElementById('location-search').value.trim();
     if (!query) return;
@@ -453,7 +470,7 @@ const App = (() => {
         resultsEl.innerHTML = '<div class="geocode-result-item">Ничего не найдено</div>';
         return;
       }
-      resultsEl.innerHTML = results.map((r, i) =>
+      resultsEl.innerHTML = results.map((r) =>
         `<div class="geocode-result-item" data-lat="${r.lat}" data-lng="${r.lon}" data-addr="${escHtml(r.display_name)}">${escHtml(r.display_name)}</div>`
       ).join('');
       resultsEl.querySelectorAll('.geocode-result-item[data-lat]').forEach(el => {
@@ -515,6 +532,109 @@ const App = (() => {
     } else {
       badge.classList.add('hidden');
     }
+  }
+
+  // ===================== WALK MODE =====================
+
+  function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function renderNearbyPanel(userLat, userLng) {
+    const locEl = document.getElementById('walk-locating');
+    const contentEl = document.getElementById('walk-content');
+    if (locEl) locEl.classList.add('hidden');
+    if (contentEl) contentEl.classList.remove('hidden');
+
+    const placeTypeEmoji = {
+      museum: '🏛', mansion: '🏰', cafe: '☕', restaurant: '🍽',
+      park: '🌳', shop: '🛍', other: '📌',
+    };
+
+    const items = Storage.getAll().filter(i => i.location && (i.category === 'place' || i.category === 'experience'));
+
+    const withDist = items.map(item => ({
+      ...item,
+      dist: haversine(userLat, userLng, item.location.lat, item.location.lng),
+    })).sort((a, b) => a.dist - b.dist);
+
+    const listEl = document.getElementById('walk-nearby-list');
+    if (!listEl) return;
+
+    if (withDist.length === 0) {
+      listEl.innerHTML = '<p class="walk-empty">В списке нет мест с адресом.<br>Добавьте места через «+».</p>';
+    } else {
+      const walkSel = MapModule.getWalkSelected();
+      listEl.innerHTML = withDist.map(item => {
+        const dist = item.dist;
+        const distStr = dist < 1000 ? `${Math.round(dist)} м` : `${(dist / 1000).toFixed(1)} км`;
+        const walkMins = Math.round(dist / 83.3);
+        const timeStr = walkMins >= 60
+          ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин`
+          : `${walkMins} мин`;
+        const emoji = item.category === 'experience' ? '✨' : (placeTypeEmoji[item.placeType] || '📍');
+        const inWalk = walkSel.includes(item.id);
+        const nearTag = dist <= 500 ? '<span class="walk-near-tag">Рядом</span>' : '';
+        return `<div class="walk-nearby-item${inWalk ? ' selected' : ''}" data-id="${item.id}">
+          <div class="walk-nearby-left">
+            <div class="walk-nearby-name">${emoji} ${escHtml(item.title)} ${nearTag}</div>
+            <div class="walk-nearby-dist">📍 ${distStr} · 🚶 ~${timeStr}</div>
+          </div>
+          <button class="walk-nearby-btn${inWalk ? ' active' : ''}" onclick="App.toggleWalkItem('${item.id}')">
+            ${inWalk ? '✓' : '+'}
+          </button>
+        </div>`;
+      }).join('');
+    }
+
+    renderWalkRouteSection();
+  }
+
+  function renderWalkRouteSection() {
+    const selected = MapModule.getWalkSelected();
+    const routeSection = document.getElementById('walk-route-section');
+    const routePlaces = document.getElementById('walk-route-places');
+    if (!routeSection || !routePlaces) return;
+
+    if (selected.length === 0) {
+      routeSection.classList.add('hidden');
+      return;
+    }
+
+    routeSection.classList.remove('hidden');
+    const items = Storage.getAll();
+    const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
+
+    routePlaces.innerHTML = selectedItems.map((item, i) => `
+      <div class="route-selected-item">
+        <div class="route-item-num">${i + 1}</div>
+        <div style="flex:1">
+          <div class="route-item-name">${escHtml(item.title)}</div>
+          ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
+        </div>
+        <button class="btn-remove-from-route" onclick="App.removeFromWalk('${item.id}')" title="Убрать">✕</button>
+      </div>`).join('');
+  }
+
+  function toggleWalkItem(id) {
+    MapModule.toggleWalkSelect(id);
+    const loc = MapModule.getUserLocation();
+    if (loc) renderNearbyPanel(loc.lat, loc.lng);
+    else renderWalkRouteSection();
+  }
+
+  function removeFromWalk(id) {
+    MapModule.removeWalkItem(id);
+    MapModule.clearWalkRoute();
+    const loc = MapModule.getUserLocation();
+    if (loc) renderNearbyPanel(loc.lat, loc.lng);
+    else renderWalkRouteSection();
   }
 
   // ===================== UTILS =====================
@@ -602,13 +722,34 @@ const App = (() => {
       renderRoutePanel();
     });
 
+    // Walk buttons
+    document.getElementById('btn-walk-build').addEventListener('click', () => {
+      MapModule.buildWalkRoute(Storage.getAll());
+    });
+    document.getElementById('btn-walk-clear').addEventListener('click', () => {
+      MapModule.clearWalkSelection();
+      MapModule.clearWalkRoute();
+      const loc = MapModule.getUserLocation();
+      if (loc) renderNearbyPanel(loc.lat, loc.lng);
+      else renderWalkRouteSection();
+    });
+
     // Map route selection callback
     MapModule.setOnRouteChange((selected) => {
       updateRouteBadge(selected.length);
       if (currentView === 'route') renderRoutePanel();
     });
 
-    // Init maps lazily (location map init on first modal open, others on view switch)
+    // Walk selection callback
+    MapModule.setOnWalkSelectionChange(() => {
+      if (currentView === 'walk') {
+        const loc = MapModule.getUserLocation();
+        if (loc) renderNearbyPanel(loc.lat, loc.lng);
+        else renderWalkRouteSection();
+      }
+    });
+
+    // Init maps lazily
     MapModule.initLocationMap((lat, lng, address) => {
       locationPickResult = { lat, lng, address };
       updateLocationDisplay(locationPickResult);
@@ -635,11 +776,14 @@ const App = (() => {
     openVisitModal,
     toggleVisits,
     showIssuePopup,
+    toggleWalkItem,
+    removeFromWalk,
   };
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
   MapModule.initMainMap();
   MapModule.initRouteMap();
+  MapModule.initWalkMap();
   App.init();
 });

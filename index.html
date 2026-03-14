@@ -63,6 +63,29 @@
         </div>
       </section>
 
+      <!-- WALK VIEW -->
+      <section id="view-walk" class="view">
+        <div id="walk-map"></div>
+        <div id="walk-panel" class="walk-panel">
+          <div id="walk-locating" class="walk-locating">
+            <div class="walk-spinner"></div>
+            <p>Определяем местоположение…</p>
+          </div>
+          <div id="walk-content" class="hidden">
+            <div id="walk-route-section" class="walk-route-section hidden">
+              <div id="walk-route-places" class="walk-route-places"></div>
+              <div id="walk-route-info" class="route-info"></div>
+              <div class="walk-route-btns">
+                <button id="btn-walk-build" class="btn-primary btn-sm">🚶 Построить маршрут</button>
+                <button id="btn-walk-clear" class="btn-ghost btn-sm">Очистить</button>
+              </div>
+            </div>
+            <div class="walk-nearby-header">Рядом с вами</div>
+            <div id="walk-nearby-list" class="walk-nearby-list"></div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <!-- Bottom nav -->
@@ -79,6 +102,10 @@
         <span class="nav-icon">🧭</span>
         <span class="nav-label">Маршрут</span>
         <span id="route-badge" class="route-badge hidden">0</span>
+      </button>
+      <button class="nav-btn" data-view="walk">
+        <span class="nav-icon">🚶</span>
+        <span class="nav-label">Гуляю</span>
       </button>
     </nav>
   </div>
@@ -131,6 +158,7 @@
             <div class="form-group">
               <select class="form-input form-select" name="placeType">
                 <option value="museum">🏛 Музей</option>
+                <option value="mansion">🏰 Особняк/Усадьба</option>
                 <option value="cafe">☕ Кафе</option>
                 <option value="restaurant">🍽 Ресторан</option>
                 <option value="park">🌳 Парк</option>
