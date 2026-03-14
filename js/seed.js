@@ -87,6 +87,40 @@ const SEED_ITEMS = [
       address: 'Милютинский пер., 19/4с1 (м. Тургеневская), Москва',
     },
   },
+  {
+    id: 'seed_mansion_turgenev',
+    category: 'place',
+    placeType: 'mansion',
+    title: 'Особняк Дом-музей И.С. Тургенева',
+    description: 'Московский дом, где бывал Тургенев. Музей в особняке XIX века.',
+    priceText: '400 ₽',
+    website: '',
+    priority: 2,
+    createdAt: 1700000006000,
+    visits: [],
+    location: {
+      lat: 55.7358,
+      lng: 37.5955,
+      address: 'Остоженка, 37/7с1 (м. Парк культуры), Москва',
+    },
+  },
+  {
+    id: 'seed_mansion_teleshov',
+    category: 'place',
+    placeType: 'mansion',
+    title: 'Особняк Дом Телешова',
+    description: 'Вход свободный. Литературный музей в доме писателя Николая Телешова.',
+    priceText: 'Бесплатно',
+    website: '',
+    priority: 2,
+    createdAt: 1700000007000,
+    visits: [],
+    location: {
+      lat: 55.7530,
+      lng: 37.6452,
+      address: 'Покровский бул., 16-18с4 (м. Китай-город), Москва',
+    },
+  },
 ];
 
 (function seedData() {
