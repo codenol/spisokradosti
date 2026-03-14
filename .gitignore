@@ -1,0 +1,2 @@
+# PHP backend config — contains DB credentials, never commit
+config.php

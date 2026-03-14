@@ -894,8 +894,8 @@ const App = (() => {
     const data = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      items: JSON.parse(localStorage.getItem('wishlist_v1') || '[]'),
-      routes: JSON.parse(localStorage.getItem('wishlist_routes_v1') || '[]'),
+      items:  Storage.getAll(),
+      routes: Storage.getAllRoutes(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -918,8 +918,7 @@ const App = (() => {
         const routeCount = (data.routes || []).length;
         const msg = `Найдено: ${itemCount} мест${routeCount ? ` и ${routeCount} маршрутов` : ''}.\nТекущие данные будут заменены. Продолжить?`;
         if (!confirm(msg)) return;
-        localStorage.setItem('wishlist_v1', JSON.stringify(data.items));
-        localStorage.setItem('wishlist_routes_v1', JSON.stringify(data.routes || []));
+        Storage.importAll(data.items, data.routes || []);
         closeModal('settings-modal');
         renderList();
         renderFilteredMarkers();
@@ -964,7 +963,7 @@ const App = (() => {
 
   // ===================== INIT =====================
 
-  function init() {
+  function _initSync() {
     // Map filter chips
     document.querySelectorAll('.map-filter-chip').forEach(chip => {
       chip.addEventListener('click', () => toggleMapFilter(chip.dataset.type));
@@ -1103,8 +1102,11 @@ const App = (() => {
 
     // Theme
     initTheme();
+  }
 
-    // Initial render
+  async function init() {
+    _initSync();
+    await Storage.init();   // detect backend; load DB → localStorage if available
     renderList();
     icons();
   }
