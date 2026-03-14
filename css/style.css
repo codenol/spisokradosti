@@ -74,8 +74,10 @@ a { color: inherit; }
 }
 .topbar-actions {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 .btn-icon {
   width: 36px;
