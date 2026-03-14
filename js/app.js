@@ -27,8 +27,9 @@ const App = (() => {
 
     currentView = name;
 
-    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршруты', walk: 'Гуляю' };
+    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршруты', walk: 'Гуляю', discover: 'Найти' };
     document.getElementById('view-title').textContent = titles[name] || '';
+    if (name === 'discover') renderDiscover();
 
     if (name === 'map') {
       MapModule.invalidateMainMap();
@@ -184,12 +185,12 @@ const App = (() => {
         ${item.description ? `<div class="card-description">${escHtml(item.description)}</div>` : ''}
         ${metaItems.length > 0 ? `<div class="card-meta">${metaItems.join(' · ')}</div>` : ''}
         ${starsHtml || visitCountHtml ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${starsHtml}${visitCountHtml}</div>` : ''}
-        <div class="card-footer">
+        ${!_isReadOnly() ? `<div class="card-footer">
           <button class="btn-card btn-card-primary btn-sm" onclick="App.openVisitModal('${item.id}')">
             ${visited ? `${icon('check', 'icon-sm')} Отметить снова` : `${icon('plus', 'icon-sm')} Отметить`}
           </button>
           <button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>
-        </div>
+        </div>` : ''}
         ${visitsHtml}
       </div>
     </div>`;
@@ -936,8 +937,7 @@ const App = (() => {
 
   function clearAllData() {
     if (!confirm('Удалить ВСЕ данные? Это действие нельзя отменить.')) return;
-    localStorage.removeItem('wishlist_v1');
-    localStorage.removeItem('wishlist_routes_v1');
+    Object.keys(localStorage).filter(k => k.startsWith('wishlist_')).forEach(k => localStorage.removeItem(k));
     MapModule.clearRouteSelection();
     MapModule.clearWalkSelection();
     MapModule.clearActiveRoute();
@@ -977,6 +977,29 @@ const App = (() => {
     document.getElementById('input-import').addEventListener('change', e => handleImportFile(e.target.files[0]));
     document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
     document.getElementById('toggle-dark-mode').addEventListener('change', e => applyTheme(e.target.checked));
+
+    // Auth / sharing
+    document.getElementById('btn-logout')?.addEventListener('click', () => Auth.logout());
+    document.getElementById('btn-back-to-own')?.addEventListener('click', switchToOwnList);
+    document.getElementById('share-public-toggle')?.addEventListener('change', e => togglePublic(e.target.checked));
+    document.getElementById('btn-save-list-name')?.addEventListener('click', () => {
+      updateListName(document.getElementById('share-list-name')?.value || '');
+    });
+    document.getElementById('btn-send-invite')?.addEventListener('click', sendInvite);
+    document.getElementById('share-invite-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendInvite(); });
+
+    // Settings open — load share section
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      openSettingsModal();
+      if (typeof Auth !== 'undefined' && Auth.isAuthed()) openShareSettings();
+    });
+
+    // Discover search
+    let _searchTimer = null;
+    document.getElementById('discover-search-input')?.addEventListener('input', e => {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => searchDiscover(e.target.value), 400);
+    });
 
     // Walk add modal
     document.getElementById('btn-walk-add-close').addEventListener('click', () => closeModal('walk-add-modal'));
@@ -1104,9 +1127,243 @@ const App = (() => {
     initTheme();
   }
 
+  // ===================== AUTH / MULTI-USER =====================
+
+  function _isReadOnly() {
+    return typeof Auth !== 'undefined' && Auth.isAuthed() && !Auth.isViewingOwn();
+  }
+
+  function updateTopbarContext() {
+    const btnBack = document.getElementById('btn-back-to-own');
+    const btnAdd  = document.getElementById('btn-add');
+    const label   = document.getElementById('viewing-as-label');
+    const user    = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+
+    if (btnBack) btnBack.classList.toggle('hidden', !user || Auth.isViewingOwn());
+    if (btnAdd)  btnAdd.classList.toggle('hidden',  _isReadOnly());
+    if (label) {
+      label.textContent = (_isReadOnly() && user) ? `Чужой список` : '';
+      label.classList.toggle('hidden', !_isReadOnly());
+    }
+  }
+
+  async function switchToList(listId) {
+    Auth.setViewingList(listId);
+    await Storage.setListId(listId);
+    updateTopbarContext();
+    switchView('list');
+    renderList();
+    icons();
+  }
+
+  async function switchToOwnList() {
+    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    if (!user) return;
+    Auth.resetViewingList();
+    await Storage.setListId(user.list_id);
+    updateTopbarContext();
+    renderList();
+    icons();
+  }
+
+  // ── Discover ──────────────────────────────────────────────────────────────
+
+  async function renderDiscover() {
+    if (typeof Auth === 'undefined' || !Auth.isAuthed()) return;
+    const subEl = document.getElementById('discover-subscriptions-list');
+    if (!subEl) return;
+    try {
+      const res  = await fetch('api/lists.php?action=subscriptions', { credentials: 'include' });
+      const subs = await res.json();
+      subEl.innerHTML = subs.length === 0
+        ? '<p class="discover-empty">Нет подписок</p>'
+        : subs.map(_listCardHtml).join('');
+      icons();
+    } catch { subEl.innerHTML = '<p class="discover-empty">Ошибка загрузки</p>'; }
+  }
+
+  async function searchDiscover(q) {
+    const container = document.getElementById('discover-results');
+    if (!container) return;
+    if (!q.trim()) { container.innerHTML = ''; return; }
+    container.innerHTML = '<p class="discover-empty">Поиск…</p>';
+    try {
+      const res   = await fetch(`api/lists.php?action=search&q=${encodeURIComponent(q)}`, { credentials: 'include' });
+      const lists = await res.json();
+      container.innerHTML = lists.length === 0
+        ? '<p class="discover-empty">Ничего не найдено</p>'
+        : lists.map(_listCardHtml).join('');
+      icons();
+    } catch { container.innerHTML = '<p class="discover-empty">Ошибка поиска</p>'; }
+  }
+
+  function _listCardHtml(list) {
+    const subBtn = +list.is_subscribed
+      ? `<button class="btn-secondary btn-sm" onclick="App.unsubscribeList('${list.id}')">Отписаться</button>`
+      : `<button class="btn-primary btn-sm" onclick="App.subscribeList('${list.id}')">Подписаться</button>`;
+    return `<div class="list-card">
+      <div class="list-card-info" onclick="App.switchToList('${list.id}')">
+        <div class="list-card-title">${escHtml(list.name)}</div>
+        <div class="list-card-meta">${escHtml(list.username)} · ${list.wish_count} желаний${list.subscriber_count ? ` · ${list.subscriber_count} подписчиков` : ''}</div>
+      </div>
+      ${subBtn}
+    </div>`;
+  }
+
+  async function subscribeList(listId) {
+    try {
+      const res  = await fetch('api/lists.php?action=subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: listId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      renderDiscover();
+    } catch (e) { showSettingsStatus(e.message, 'error'); }
+  }
+
+  async function unsubscribeList(listId) {
+    await fetch('api/lists.php?action=unsubscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: listId }) }).catch(() => {});
+    renderDiscover();
+  }
+
+  // ── Share settings ────────────────────────────────────────────────────────
+
+  async function openShareSettings() {
+    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    if (!user) return;
+    try {
+      const res  = await fetch(`api/lists.php?action=info&id=${encodeURIComponent(user.list_id)}`, { credentials: 'include' });
+      const info = await res.json();
+      const tog  = document.getElementById('share-public-toggle');
+      if (tog) tog.checked = !!+info.is_public;
+      const nameEl = document.getElementById('share-list-name');
+      if (nameEl) nameEl.value = info.name || '';
+    } catch {}
+    await Promise.all([_refreshMembers(user.list_id), _refreshInvites(user.list_id)]);
+    await loadIncomingInvites();
+  }
+
+  async function _refreshMembers(listId) {
+    const el = document.getElementById('share-members-list');
+    if (!el) return;
+    try {
+      const res     = await fetch(`api/lists.php?action=members&id=${encodeURIComponent(listId)}`, { credentials: 'include' });
+      const members = await res.json();
+      el.innerHTML  = members.length === 0
+        ? '<p class="settings-hint">Редакторов пока нет</p>'
+        : members.map(m => `<div class="share-member-row"><span>${escHtml(m.username)}</span><button class="btn-danger btn-sm" onclick="App.removeMember('${listId}','${m.id}')">Убрать</button></div>`).join('');
+    } catch {}
+  }
+
+  async function _refreshInvites(listId) {
+    const el = document.getElementById('share-invites-list');
+    if (!el) return;
+    try {
+      const res     = await fetch(`api/invites.php?action=outgoing&list_id=${encodeURIComponent(listId)}`, { credentials: 'include' });
+      const invites = await res.json();
+      el.innerHTML  = invites.length === 0
+        ? '<p class="settings-hint">Нет исходящих приглашений</p>'
+        : invites.map(i => `<div class="share-member-row"><span>${escHtml(i.invited_username)} <small class="text-muted">(ожидает)</small></span><button class="btn-secondary btn-sm" onclick="App.revokeInvite('${i.id}')">Отозвать</button></div>`).join('');
+    } catch {}
+  }
+
+  async function sendInvite() {
+    const user  = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    const input = document.getElementById('share-invite-input');
+    const uname = input?.value.trim();
+    if (!user || !uname) return;
+    try {
+      const res  = await fetch('api/invites.php?action=send', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_id: user.list_id, username: uname }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (input) input.value = '';
+      await _refreshInvites(user.list_id);
+      showSettingsStatus('Приглашение отправлено', 'success');
+    } catch (e) { showSettingsStatus(e.message, 'error'); }
+  }
+
+  async function removeMember(listId, userId) {
+    if (!confirm('Убрать этого редактора?')) return;
+    await fetch('api/lists.php?action=remove_member', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_id: listId, user_id: userId }) }).catch(() => {});
+    await _refreshMembers(listId);
+  }
+
+  async function revokeInvite(inviteId) {
+    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    if (!user) return;
+    await fetch(`api/invites.php?action=revoke&id=${encodeURIComponent(inviteId)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+    await _refreshInvites(user.list_id);
+  }
+
+  async function togglePublic(isPublic) {
+    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    if (!user) return;
+    try {
+      await fetch('api/lists.php?action=update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.list_id, is_public: isPublic }) });
+      showSettingsStatus(isPublic ? 'Список стал публичным' : 'Список скрыт', 'success');
+    } catch {}
+  }
+
+  async function updateListName(name) {
+    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+    if (!user || !name.trim()) return;
+    try {
+      await fetch('api/lists.php?action=update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.list_id, name }) });
+      showSettingsStatus('Название обновлено', 'success');
+    } catch {}
+  }
+
+  // ── Incoming invites ──────────────────────────────────────────────────────
+
+  async function loadIncomingInvites() {
+    const el = document.getElementById('incoming-invites-list');
+    if (!el) return;
+    try {
+      const res     = await fetch('api/invites.php?action=incoming', { credentials: 'include' });
+      if (!res.ok) return;
+      const invites = await res.json();
+      const badge   = document.getElementById('invites-badge');
+      if (badge) { badge.textContent = invites.length; badge.classList.toggle('hidden', invites.length === 0); }
+      el.innerHTML = invites.length === 0 ? '' : invites.map(i => `
+        <div class="invite-row">
+          <div class="invite-info"><strong>${escHtml(i.list_name)}</strong><small> от ${escHtml(i.invited_by_username)}</small></div>
+          <div class="invite-actions">
+            <button class="btn-primary btn-sm" onclick="App.acceptInvite('${i.id}')">Принять</button>
+            <button class="btn-secondary btn-sm" onclick="App.declineInvite('${i.id}')">Отклонить</button>
+          </div>
+        </div>`).join('');
+    } catch {}
+  }
+
+  async function acceptInvite(inviteId) {
+    try {
+      const res  = await fetch('api/invites.php?action=accept', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inviteId }) });
+      const data = await res.json();
+      await loadIncomingInvites();
+      showSettingsStatus(`Вы редактор списка «${data.list?.name || ''}»`, 'success');
+    } catch {}
+  }
+
+  async function declineInvite(inviteId) {
+    await fetch('api/invites.php?action=decline', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inviteId }) }).catch(() => {});
+    await loadIncomingInvites();
+  }
+
+  // ===================== INIT =====================
+
   async function init() {
+    if (typeof Auth !== 'undefined') Auth.initUI();
     _initSync();
-    await Storage.init();   // detect backend; load DB → localStorage if available
+
+    let user = null;
+    if (typeof Auth !== 'undefined') {
+      user = await Auth.init();   // shows login modal if needed, waits for login
+    }
+
+    const listId = user ? user.list_id : null;
+    await Storage.init(listId);
+
+    if (user) updateTopbarContext();
+    if (user && typeof Auth !== 'undefined' && Auth.isAuthed()) loadIncomingInvites();
+
     renderList();
     icons();
   }
@@ -1128,6 +1385,15 @@ const App = (() => {
     loadSavedRoute,
     deleteSavedRoute,
     openWalkAddModal,
+    // multi-user
+    switchToList,
+    switchToOwnList,
+    subscribeList,
+    unsubscribeList,
+    removeMember,
+    revokeInvite,
+    acceptInvite,
+    declineInvite,
   };
 })();
 

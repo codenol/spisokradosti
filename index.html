@@ -24,7 +24,11 @@
 
     <!-- Top bar -->
     <header id="topbar">
-      <h1 id="view-title">Список желаний</h1>
+      <div class="topbar-left">
+        <button id="btn-back-to-own" class="btn-icon hidden" title="Вернуться к своему списку"><i data-lucide="arrow-left" class="icon icon-lg"></i></button>
+        <h1 id="view-title">Список желаний</h1>
+        <span id="viewing-as-label" class="viewing-as-label hidden"></span>
+      </div>
       <div class="topbar-actions">
         <button id="btn-settings" class="btn-icon" title="Настройки"><i data-lucide="settings" class="icon icon-lg"></i></button>
         <button id="btn-add" class="btn-fab" title="Добавить желание"><i data-lucide="plus" class="icon icon-xl"></i></button>
@@ -150,6 +154,19 @@
         </div>
       </section>
 
+      <!-- DISCOVER VIEW -->
+      <section id="view-discover" class="view">
+        <div class="discover-search-bar">
+          <i data-lucide="search" class="icon icon-sm"></i>
+          <input id="discover-search-input" type="search" placeholder="Поиск публичных списков…" autocomplete="off">
+        </div>
+        <div id="discover-results"></div>
+        <div class="discover-subs-section">
+          <div class="discover-subs-title">Мои подписки</div>
+          <div id="discover-subscriptions-list"><p class="discover-empty">Загрузка…</p></div>
+        </div>
+      </section>
+
     </main>
 
     <!-- Bottom nav -->
@@ -170,6 +187,13 @@
       <button class="nav-btn" data-view="walk">
         <span class="nav-icon"><i data-lucide="footprints" class="icon"></i></span>
         <span class="nav-label">Гуляю</span>
+      </button>
+      <button class="nav-btn" data-view="discover" id="btn-discover">
+        <span class="nav-icon" style="position:relative">
+          <i data-lucide="compass" class="icon"></i>
+          <span id="invites-badge" class="route-badge hidden" style="top:-4px;right:-4px">0</span>
+        </span>
+        <span class="nav-label">Найти</span>
       </button>
     </nav>
   </div>
@@ -459,6 +483,48 @@
           </div>
         </div>
 
+        <!-- Share section (visible only when authenticated) -->
+        <div class="settings-section" id="share-section">
+          <div class="settings-section-title">Доступ к списку</div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Название списка</div>
+            </div>
+            <div class="share-name-row">
+              <input id="share-list-name" type="text" class="settings-input" placeholder="Мой список">
+              <button id="btn-save-list-name" class="btn-secondary btn-sm">Сохранить</button>
+            </div>
+          </div>
+
+          <div class="settings-item">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Публичный список</div>
+              <div class="settings-item-desc">Другие пользователи смогут найти и подписаться</div>
+            </div>
+            <label class="settings-toggle">
+              <input type="checkbox" id="share-public-toggle">
+              <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
+            </label>
+          </div>
+
+          <div class="settings-sub-title">Редакторы</div>
+          <div id="share-members-list" class="share-list"></div>
+
+          <div class="settings-sub-title">Пригласить редактора</div>
+          <div class="share-invite-row">
+            <input id="share-invite-input" type="text" class="settings-input" placeholder="Имя пользователя">
+            <button id="btn-send-invite" class="btn-primary btn-sm">Пригласить</button>
+          </div>
+          <div id="share-invites-list" class="share-list"></div>
+        </div>
+
+        <!-- Incoming invites -->
+        <div class="settings-section" id="invites-section">
+          <div class="settings-section-title">Входящие приглашения</div>
+          <div id="incoming-invites-list"></div>
+        </div>
+
         <div class="settings-section">
           <div class="settings-section-title">Опасная зона</div>
           <div class="settings-item">
@@ -468,6 +534,12 @@
             </div>
             <button id="btn-clear-all" class="btn-danger btn-sm">Очистить</button>
           </div>
+          <div class="settings-item" id="logout-section">
+            <div class="settings-item-info">
+              <div class="settings-item-name">Выйти из аккаунта</div>
+            </div>
+            <button id="btn-logout" class="btn-danger btn-sm">Выйти</button>
+          </div>
         </div>
 
         <div id="settings-status" class="settings-status hidden"></div>
@@ -476,8 +548,50 @@
     </div>
   </div>
 
+  <!-- AUTH MODAL -->
+  <div id="auth-modal" class="auth-modal hidden" role="dialog" aria-modal="true">
+    <div class="auth-card">
+      <div class="auth-logo"><i data-lucide="heart" class="icon" style="color:var(--color-place)"></i> Список желаний</div>
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab active">Войти</button>
+        <button id="auth-tab-register" class="auth-tab">Регистрация</button>
+      </div>
+
+      <form id="auth-login-form" autocomplete="on">
+        <div class="auth-field">
+          <label>Email</label>
+          <input name="email" type="email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>Пароль</label>
+          <input name="password" type="password" placeholder="••••••" required autocomplete="current-password">
+        </div>
+        <p id="auth-login-error" class="auth-error"></p>
+        <button type="submit" class="auth-submit">Войти</button>
+      </form>
+
+      <form id="auth-register-form" class="hidden" autocomplete="on">
+        <div class="auth-field">
+          <label>Имя пользователя</label>
+          <input name="username" type="text" placeholder="ivan_petrov" required autocomplete="username" minlength="3" maxlength="50">
+        </div>
+        <div class="auth-field">
+          <label>Email</label>
+          <input name="email" type="email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>Пароль</label>
+          <input name="password" type="password" placeholder="Минимум 6 символов" required autocomplete="new-password" minlength="6">
+        </div>
+        <p id="auth-register-error" class="auth-error"></p>
+        <button type="submit" class="auth-submit">Создать аккаунт</button>
+      </form>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/seed.js"></script>
   <script src="js/map.js"></script>

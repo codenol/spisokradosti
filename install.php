@@ -83,22 +83,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 3. Create tables
             try {
                 $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS users (
+                        id            INT             NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        username      VARCHAR(50)     NOT NULL UNIQUE,
+                        email         VARCHAR(255)    NOT NULL UNIQUE,
+                        password_hash VARCHAR(255)    NOT NULL,
+                        created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ");
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS lists (
+                        id         VARCHAR(32)  NOT NULL PRIMARY KEY,
+                        owner_id   INT          NOT NULL,
+                        name       VARCHAR(255) NOT NULL DEFAULT 'Мой список',
+                        is_public  TINYINT(1)   NOT NULL DEFAULT 0,
+                        created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ");
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS list_members (
+                        list_id    VARCHAR(32) NOT NULL,
+                        user_id    INT         NOT NULL,
+                        invited_by INT         NOT NULL,
+                        created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (list_id, user_id),
+                        FOREIGN KEY (list_id)    REFERENCES lists(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id)    REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (invited_by) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ");
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS list_invites (
+                        id              VARCHAR(32) NOT NULL PRIMARY KEY,
+                        list_id         VARCHAR(32) NOT NULL,
+                        invited_user_id INT         NOT NULL,
+                        invited_by      INT         NOT NULL,
+                        status          ENUM('pending','accepted','declined') NOT NULL DEFAULT 'pending',
+                        created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (list_id)         REFERENCES lists(id) ON DELETE CASCADE,
+                        FOREIGN KEY (invited_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        FOREIGN KEY (invited_by)      REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ");
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS list_subscriptions (
+                        list_id    VARCHAR(32) NOT NULL,
+                        user_id    INT         NOT NULL,
+                        created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (list_id, user_id),
+                        FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                ");
+                $pdo->exec("
                     CREATE TABLE IF NOT EXISTS wishes (
-                        id          VARCHAR(32)     NOT NULL PRIMARY KEY,
-                        data        LONGTEXT        NOT NULL,
-                        created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        id         VARCHAR(32) NOT NULL PRIMARY KEY,
+                        list_id    VARCHAR(32) NOT NULL,
+                        data       LONGTEXT    NOT NULL,
+                        created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_list (list_id),
+                        FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 ");
                 $pdo->exec("
                     CREATE TABLE IF NOT EXISTS routes (
-                        id          VARCHAR(32)     NOT NULL PRIMARY KEY,
-                        data        LONGTEXT        NOT NULL,
-                        created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        updated_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        id         VARCHAR(32) NOT NULL PRIMARY KEY,
+                        list_id    VARCHAR(32) NOT NULL,
+                        data       LONGTEXT    NOT NULL,
+                        created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_list (list_id),
+                        FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 ");
-                $steps[] = ['ok', 'Таблицы wishes и routes — созданы'];
+                $steps[] = ['ok', 'Все таблицы созданы (users, lists, members, invites, wishes, routes)'];
             } catch (PDOException $e) {
                 $error = 'Ошибка создания таблиц: ' . htmlspecialchars($e->getMessage());
                 $steps[] = ['err', 'Создание таблиц — ошибка'];

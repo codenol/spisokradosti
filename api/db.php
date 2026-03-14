@@ -38,3 +38,83 @@ function bodyJson(): array
     $raw = file_get_contents('php://input');
     return json_decode($raw ?: '{}', true) ?? [];
 }
+
+function dbGenId(): string
+{
+    return bin2hex(random_bytes(8));
+}
+
+// ── Session / Auth helpers ───────────────────────────────────────────────────
+
+function startSession(): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_set_cookie_params([
+            'lifetime' => 60 * 60 * 24 * 30,
+            'path'     => '/',
+            'samesite' => 'Lax',
+            'httponly' => true,
+            'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        ]);
+        session_start();
+    }
+}
+
+function getCurrentUser(): ?array
+{
+    startSession();
+    $uid = $_SESSION['user_id'] ?? null;
+    if (!$uid) return null;
+
+    $stmt = getDb()->prepare('SELECT id, username, email FROM users WHERE id = ?');
+    $stmt->execute([$uid]);
+    $user = $stmt->fetch();
+    return $user ?: null;
+}
+
+function requireAuth(): array
+{
+    $user = getCurrentUser();
+    if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+    return $user;
+}
+
+function getUserListId(int $userId): ?string
+{
+    $stmt = getDb()->prepare('SELECT id FROM lists WHERE owner_id = ? LIMIT 1');
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch();
+    return $row ? $row['id'] : null;
+}
+
+// ── Access control ───────────────────────────────────────────────────────────
+
+function canReadList(string $listId, int $userId): bool
+{
+    $stmt = getDb()->prepare('SELECT owner_id, is_public FROM lists WHERE id = ?');
+    $stmt->execute([$listId]);
+    $list = $stmt->fetch();
+    if (!$list) return false;
+    if ((int)$list['owner_id'] === $userId) return true;
+
+    // Editor
+    $stmt = getDb()->prepare('SELECT 1 FROM list_members WHERE list_id = ? AND user_id = ?');
+    $stmt->execute([$listId, $userId]);
+    if ($stmt->fetch()) return true;
+
+    // Public list — any authenticated user can read
+    return (bool)$list['is_public'];
+}
+
+function canWriteList(string $listId, int $userId): bool
+{
+    $stmt = getDb()->prepare('SELECT owner_id FROM lists WHERE id = ?');
+    $stmt->execute([$listId]);
+    $list = $stmt->fetch();
+    if (!$list) return false;
+    if ((int)$list['owner_id'] === $userId) return true;
+
+    $stmt = getDb()->prepare('SELECT 1 FROM list_members WHERE list_id = ? AND user_id = ?');
+    $stmt->execute([$listId, $userId]);
+    return (bool)$stmt->fetch();
+}

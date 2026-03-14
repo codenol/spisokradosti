@@ -2,49 +2,55 @@
 
 const Storage = (() => {
 
-  const KEY        = 'wishlist_v1';
-  const ROUTES_KEY = 'wishlist_routes_v1';
+  // localStorage keys are scoped per list so switching lists doesn't mix data
+  let _listId   = null;
+  const _lsKey  = () => _listId ? `wishlist_v1_${_listId}`        : 'wishlist_v1';
+  const _lsKeyR = () => _listId ? `wishlist_routes_v1_${_listId}` : 'wishlist_routes_v1';
 
   // ── localStorage helpers ────────────────────────────────────────────────────
 
-  function _lsGet()        { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } }
-  function _lsSet(items)   { localStorage.setItem(KEY, JSON.stringify(items)); }
-  function _lsGetR()       { try { return JSON.parse(localStorage.getItem(ROUTES_KEY) || '[]'); } catch { return []; } }
-  function _lsSetR(routes) { localStorage.setItem(ROUTES_KEY, JSON.stringify(routes)); }
+  function _lsGet()        { try { return JSON.parse(localStorage.getItem(_lsKey())  || '[]'); } catch { return []; } }
+  function _lsSet(items)   { localStorage.setItem(_lsKey(),  JSON.stringify(items)); }
+  function _lsGetR()       { try { return JSON.parse(localStorage.getItem(_lsKeyR()) || '[]'); } catch { return []; } }
+  function _lsSetR(routes) { localStorage.setItem(_lsKeyR(), JSON.stringify(routes)); }
 
   // ── Backend sync layer ──────────────────────────────────────────────────────
 
   const Backend = (() => {
-    let _ok   = false;
-    const _base = 'api/';   // relative — works at any subdirectory depth
+    let _ok     = false;
+    const _base = 'api/';
 
-    /** Ping the PHP backend. Returns true when it is reachable and configured. */
-    async function detect() {
-      try {
-        const ctrl  = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2500);
-        const res   = await fetch(_base + 'ping.php', { signal: ctrl.signal });
-        clearTimeout(timer);
-        if (!res.ok) return false;
-        const j = await res.json();
-        _ok = j.ok === true;
-      } catch {
-        _ok = false;
+    function _fetchOpts(method, body) {
+      const opts = { method, credentials: 'include', headers: {} };
+      if (body !== null) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
       }
-      return _ok;
+      return opts;
+    }
+
+    function _handle401(res) {
+      if (res.status === 401 && typeof Auth !== 'undefined') {
+        Auth.init();  // re-show login modal
+      }
     }
 
     /**
-     * Called once on app start (await it before first render).
-     * If backend is available → load server data into localStorage so that
-     * all synchronous reads see fresh data from the DB.
+     * Called once on app start (after Auth.init() resolved with a user).
+     * Loads all data for the current list_id from DB into localStorage cache.
      */
     async function init() {
-      if (!await detect()) return;
+      if (!_listId) return;
+      _ok = true;  // we already know backend is up (Auth.init did the ping)
       try {
+        const qs = '?list_id=' + encodeURIComponent(_listId);
         const [wishes, routes] = await Promise.all([
-          fetch(_base + 'wishes.php').then(r => r.json()),
-          fetch(_base + 'routes.php').then(r => r.json()),
+          fetch(_base + 'wishes.php' + qs, { credentials: 'include' }).then(r => {
+            _handle401(r); return r.ok ? r.json() : [];
+          }),
+          fetch(_base + 'routes.php' + qs, { credentials: 'include' }).then(r => {
+            _handle401(r); return r.ok ? r.json() : [];
+          }),
         ]);
         if (Array.isArray(wishes)) _lsSet(wishes);
         if (Array.isArray(routes)) _lsSetR(routes);
@@ -53,31 +59,28 @@ const Storage = (() => {
       }
     }
 
-    /** Fire-and-forget write — failures are silent, localStorage stays as truth. */
+    /** Fire-and-forget — localStorage is always written first so UI is instant. */
     function push(endpoint, method, body, qs = '') {
-      if (!_ok) return;
-      const opts = { method, headers: { 'Content-Type': 'application/json' } };
-      if (body !== null) opts.body = JSON.stringify(body);
-      fetch(_base + endpoint + '.php' + qs, opts).catch(() => {});
+      if (!_ok || !_listId) return;
+      const payload = (body && method !== 'DELETE')
+        ? { ...body, list_id: _listId }
+        : body;
+      fetch(_base + endpoint + '.php' + qs, _fetchOpts(method, payload)).catch(() => {});
     }
 
-    /** Replace ALL data on backend (used by JSON import). */
     async function syncAll(items, routes) {
-      if (!_ok) return;
+      if (!_ok || !_listId) return;
       try {
-        await fetch(_base + 'sync.php', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ items, routes }),
-        });
+        await fetch(_base + 'sync.php', _fetchOpts('POST', { list_id: _listId, items, routes }));
       } catch { /* silent */ }
     }
 
-    return { init, push, syncAll, isAvailable: () => _ok };
+    function setAvailable(val) { _ok = val; }
+
+    return { init, push, syncAll, setAvailable, isAvailable: () => _ok };
   })();
 
   // ── Public API: reads ───────────────────────────────────────────────────────
-  // Always synchronous from localStorage (instant, no latency).
 
   function getAll()         { return _lsGet(); }
   function getById(id)      { return _lsGet().find(i => i.id === id) || null; }
@@ -85,7 +88,6 @@ const Storage = (() => {
   function getRouteById(id) { return _lsGetR().find(r => r.id === id) || null; }
 
   // ── Public API: writes ──────────────────────────────────────────────────────
-  // Update localStorage first (UI never waits), then sync to backend async.
 
   function save(item) {
     const items = _lsGet();
@@ -98,7 +100,8 @@ const Storage = (() => {
 
   function remove(id) {
     _lsSet(_lsGet().filter(i => i.id !== id));
-    Backend.push('wishes', 'DELETE', null, '?id=' + encodeURIComponent(id));
+    const qs = `?id=${encodeURIComponent(id)}&list_id=${encodeURIComponent(_listId || '')}`;
+    Backend.push('wishes', 'DELETE', null, qs);
   }
 
   function addVisit(wishId, visit) {
@@ -108,7 +111,7 @@ const Storage = (() => {
     if (!Array.isArray(item.visits)) item.visits = [];
     item.visits.unshift(visit);
     _lsSet(items);
-    Backend.push('wishes', 'POST', item);   // visits are embedded inside the item
+    Backend.push('wishes', 'POST', item);
     return item;
   }
 
@@ -133,7 +136,16 @@ const Storage = (() => {
 
   function removeRoute(id) {
     _lsSetR(_lsGetR().filter(r => r.id !== id));
-    Backend.push('routes', 'DELETE', null, '?id=' + encodeURIComponent(id));
+    const qs = `?id=${encodeURIComponent(id)}&list_id=${encodeURIComponent(_listId || '')}`;
+    Backend.push('routes', 'DELETE', null, qs);
+  }
+
+  // ── List switching ──────────────────────────────────────────────────────────
+
+  /** Set active list and reload data from backend for that list. */
+  async function setListId(id) {
+    _listId = id;
+    await Backend.init();
   }
 
   // ── Bulk import ─────────────────────────────────────────────────────────────
@@ -144,7 +156,20 @@ const Storage = (() => {
     await Backend.syncAll(items, routes);
   }
 
-  // ── Pure helpers (no storage) ───────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Call after Auth.init() resolved.
+   * Pass listId = null for guest mode (pure localStorage).
+   */
+  async function init(listId = null) {
+    _listId = listId;
+    if (!listId) return;          // guest mode — nothing to fetch
+    Backend.setAvailable(true);   // Auth already pinged backend successfully
+    await Backend.init();
+  }
+
+  // ── Pure helpers ─────────────────────────────────────────────────────────────
 
   function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -163,16 +188,12 @@ const Storage = (() => {
     return v ? v.issue : null;
   }
 
-  // ── Exports ─────────────────────────────────────────────────────────────────
-
-  // init() must be awaited once before the first render.
   return {
-    init: Backend.init.bind(Backend),
+    init, setListId, importAll,
     isBackend: Backend.isAvailable,
     getAll, getById, save, remove, addVisit, removeVisit, genId,
     avgRating, hasIssue, latestIssue, wasVisited,
     getAllRoutes, saveRoute, removeRoute, getRouteById,
-    importAll,
   };
 
 })();

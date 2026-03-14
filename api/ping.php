@@ -9,11 +9,24 @@ if (!file_exists($configFile)) {
     exit;
 }
 
-// Quick DB check
 try {
     require_once __DIR__ . '/db.php';
     getDb()->query('SELECT 1');
-    echo json_encode(['ok' => true, 'mode' => 'php']);
+
+    startSession();
+    $user   = getCurrentUser();
+    $listId = $user ? getUserListId((int)$user['id']) : null;
+
+    echo json_encode([
+        'ok'   => true,
+        'mode' => 'php',
+        'user' => $user ? [
+            'id'       => $user['id'],
+            'username' => $user['username'],
+            'email'    => $user['email'],
+            'list_id'  => $listId,
+        ] : null,
+    ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     http_response_code(503);
     echo json_encode(['ok' => false, 'reason' => 'db_error']);
