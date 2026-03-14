@@ -645,8 +645,14 @@ a { color: inherit; }
   transition: border-color 0.15s;
   -webkit-appearance: none;
 }
-.form-input:focus { border-color: var(--color-place); background: #fff; }
-.form-input::placeholder { color: #B0BEC5; }
+.form-input:focus { border-color: var(--color-place); background: var(--card-bg); }
+.form-input::placeholder { color: var(--text-muted); }
+/* Kill browser autofill white override */
+.form-input:-webkit-autofill,
+.form-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--card-bg) inset;
+  -webkit-text-fill-color: var(--text);
+}
 .form-textarea { resize: none; }
 .form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237F8C8D' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
 
