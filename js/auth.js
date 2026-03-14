@@ -106,6 +106,10 @@ const Auth = (() => {
     if (_resolveModal) { _resolveModal(_user); _resolveModal = null; }
   }
 
+  function skipAuth() {
+    _hideModal();
+  }
+
   /** Wire up modal form events — call once after DOMContentLoaded */
   function initUI() {
     const modal        = document.getElementById('auth-modal');
@@ -171,7 +175,7 @@ const Auth = (() => {
   }
 
   return {
-    init, initUI,
+    init, initUI, skipAuth,
     getUser, getMode, isGuest, isAuthed,
     currentListId, isViewingOwn, setViewingList, resetViewingList,
     login, register, logout,

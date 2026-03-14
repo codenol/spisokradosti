@@ -1330,6 +1330,9 @@ a { color: inherit; }
 }
 .auth-submit:hover { opacity: .88; }
 .auth-submit:disabled { opacity: .5; cursor: not-allowed; }
+.auth-skip { text-align: center; margin-top: 16px; }
+.auth-skip button { background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; text-decoration: underline; padding: 0; }
+.auth-skip button:hover { color: var(--text); }
 
 /* ===== Topbar context ===== */
 .topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
