@@ -137,6 +137,7 @@ a { color: inherit; }
   background: transparent;
   border: none;
   font-size: 20px;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
