@@ -667,6 +667,14 @@ const App = (() => {
         const timeStr = walkMins >= 60
           ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин`
           : `${walkMins} мин`;
+        const carMins = Math.round(dist / 666.7);  // 40 км/ч = 666.7 м/мин
+        const carTimeStr = carMins >= 60
+          ? `${Math.floor(carMins / 60)} ч ${carMins % 60} мин`
+          : `${carMins} мин`;
+        const taxiCost = Math.max(150, Math.round(carMins * (2000 / 60)));
+        const taxiStr = taxiCost >= 1000
+          ? `~${(taxiCost / 1000).toFixed(1).replace('.0', '')} тыс. ₽`
+          : `~${taxiCost} ₽`;
         const typeIcon = item.category === 'experience'
           ? icon('sparkles', 'icon-sm') : icon(placeTypeEmoji[item.placeType] || 'map-pin', 'icon-sm');
         const inWalk = walkSel.includes(item.id);
@@ -674,7 +682,12 @@ const App = (() => {
         return `<div class="walk-nearby-item${inWalk ? ' selected' : ''}" data-id="${item.id}">
           <div class="walk-nearby-left">
             <div class="walk-nearby-name">${typeIcon} ${escHtml(item.title)} ${nearTag}</div>
-            <div class="walk-nearby-dist">${icon('map-pin', 'meta-icon')} ${distStr} · ${icon('footprints', 'meta-icon')} ~${timeStr}</div>
+            <div class="walk-nearby-dist">
+              ${icon('map-pin', 'meta-icon')} ${distStr}
+              · ${icon('footprints', 'meta-icon')} ~${timeStr}
+              · ${icon('car', 'meta-icon')} ~${carTimeStr}
+              · ${icon('wallet', 'meta-icon')} ${taxiStr}
+            </div>
           </div>
           <button class="walk-nearby-btn${inWalk ? ' active' : ''}" onclick="App.toggleWalkItem('${item.id}')">
             ${inWalk ? icon('check') : icon('plus')}
