@@ -745,6 +745,21 @@ const App = (() => {
     else renderWalkRouteSection();
   }
 
+  // ===================== THEME =====================
+
+  function applyTheme(dark) {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    localStorage.setItem('wishlist_theme', dark ? 'dark' : 'light');
+    const toggle = document.getElementById('toggle-dark-mode');
+    if (toggle) toggle.checked = dark;
+  }
+
+  function initTheme() {
+    const saved = localStorage.getItem('wishlist_theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(saved ? saved === 'dark' : prefersDark);
+  }
+
   // ===================== SETTINGS =====================
 
   function openSettingsModal() {
@@ -839,6 +854,7 @@ const App = (() => {
     document.getElementById('btn-export').addEventListener('click', exportData);
     document.getElementById('input-import').addEventListener('change', e => handleImportFile(e.target.files[0]));
     document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
+    document.getElementById('toggle-dark-mode').addEventListener('change', e => applyTheme(e.target.checked));
 
     // Nav
     document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -952,6 +968,9 @@ const App = (() => {
       const hint = document.getElementById('map-hint');
       if (hint) hint.classList.add('hidden');
     }, 4000);
+
+    // Theme
+    initTheme();
 
     // Initial render
     renderList();
