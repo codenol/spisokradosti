@@ -745,6 +745,109 @@ const App = (() => {
     else renderWalkRouteSection();
   }
 
+  // ===================== WALK ADD =====================
+
+  let walkAddRating = 0;
+  let walkAddLocation = null;
+
+  function openWalkAddModal() {
+    walkAddRating = 0;
+    walkAddLocation = null;
+    document.getElementById('walk-add-title').value = '';
+    document.getElementById('walk-add-desc').value = '';
+    document.getElementById('walk-add-review').value = '';
+    document.getElementById('walk-add-place-type').value = 'other';
+    document.getElementById('walk-add-location-text').textContent = 'Определяем адрес…';
+    setWalkAddStars(0);
+    switchWalkAddTab('info');
+    openModal('walk-add-modal');
+
+    const loc = MapModule.getUserLocation();
+    if (!loc) {
+      document.getElementById('walk-add-location-text').textContent = 'Местоположение неизвестно';
+      return;
+    }
+    walkAddLocation = { lat: loc.lat, lng: loc.lng, address: '' };
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`)
+      .then(r => r.json())
+      .then(data => {
+        walkAddLocation.address = data.display_name || '';
+        document.getElementById('walk-add-location-text').textContent =
+          shortAddr(walkAddLocation.address) || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+      })
+      .catch(() => {
+        document.getElementById('walk-add-location-text').textContent =
+          `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+      });
+  }
+
+  function switchWalkAddTab(tab) {
+    document.querySelectorAll('.modal-tab').forEach(btn =>
+      btn.classList.toggle('active', btn.dataset.tab === tab));
+    document.getElementById('walk-add-tab-info').classList.toggle('hidden', tab !== 'info');
+    document.getElementById('walk-add-tab-rating').classList.toggle('hidden', tab !== 'rating');
+  }
+
+  function setWalkAddStars(val) {
+    walkAddRating = val;
+    document.querySelectorAll('#walk-add-stars .star').forEach(btn =>
+      btn.classList.toggle('active', parseInt(btn.dataset.value, 10) <= val));
+  }
+
+  function saveWalkAddItem() {
+    const title = document.getElementById('walk-add-title').value.trim();
+    if (!title) {
+      switchWalkAddTab('info');
+      document.getElementById('walk-add-title').focus();
+      return;
+    }
+    const placeType = document.getElementById('walk-add-place-type').value;
+    const description = document.getElementById('walk-add-desc').value.trim();
+    const review = document.getElementById('walk-add-review').value.trim();
+
+    const item = {
+      id: Storage.genId(),
+      category: 'place',
+      title,
+      description,
+      placeType,
+      location: walkAddLocation || null,
+      priority: 2,
+      createdAt: new Date().toISOString(),
+    };
+    Storage.save(item);
+
+    if (walkAddRating > 0 || review) {
+      Storage.addVisit(item.id, {
+        id: Storage.genId(),
+        date: Date.now(),
+        rating: walkAddRating || null,
+        review,
+        issue: null,
+      });
+    }
+
+    closeModal('walk-add-modal');
+    renderList(); // also calls MapModule.renderMarkers internally
+    const loc = MapModule.getUserLocation();
+    if (loc) renderNearbyPanel(loc.lat, loc.lng);
+
+    showWalkToast('✅ Место добавлено');
+  }
+
+  function showWalkToast(msg) {
+    let el = document.getElementById('walk-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'walk-toast';
+      el.className = 'walk-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
   // ===================== THEME =====================
 
   function applyTheme(dark) {
@@ -855,6 +958,15 @@ const App = (() => {
     document.getElementById('input-import').addEventListener('change', e => handleImportFile(e.target.files[0]));
     document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
     document.getElementById('toggle-dark-mode').addEventListener('change', e => applyTheme(e.target.checked));
+
+    // Walk add modal
+    document.getElementById('btn-walk-add-close').addEventListener('click', () => closeModal('walk-add-modal'));
+    document.getElementById('walk-add-modal-overlay').addEventListener('click', () => closeModal('walk-add-modal'));
+    document.getElementById('btn-walk-add-save').addEventListener('click', saveWalkAddItem);
+    document.querySelectorAll('.modal-tab').forEach(btn =>
+      btn.addEventListener('click', () => switchWalkAddTab(btn.dataset.tab)));
+    document.querySelectorAll('#walk-add-stars .star').forEach(btn =>
+      btn.addEventListener('click', () => setWalkAddStars(parseInt(btn.dataset.value, 10))));
 
     // Nav
     document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -992,6 +1104,7 @@ const App = (() => {
     renderRoutePanel,
     loadSavedRoute,
     deleteSavedRoute,
+    openWalkAddModal,
   };
 })();
 

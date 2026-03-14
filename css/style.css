@@ -998,13 +998,93 @@ a { color: inherit; }
   gap: 8px;
   align-items: center;
 }
+.walk-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 4px 16px;
+}
 .walk-nearby-header {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  padding: 10px 16px 4px;
+}
+.btn-walk-add-here {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-place);
+  background: var(--color-place-light);
+  border: 1.5px solid var(--color-place);
+  border-radius: 20px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-walk-add-here:active { opacity: 0.7; }
+
+/* Modal tabs */
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  gap: 0;
+}
+.modal-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.modal-tab.active {
+  color: var(--color-place);
+  border-bottom-color: var(--color-place);
+}
+.modal-tab-content { /* nothing extra needed, just hidden/visible */ }
+
+/* Walk-add location row */
+.walk-add-location {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.walk-add-location-pin { flex-shrink: 0; }
+.walk-add-location-text { flex: 1; min-width: 0; word-break: break-word; }
+
+/* Walk-add toast */
+.walk-toast {
+  position: fixed;
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: #222;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+}
+.walk-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 .walk-nearby-list {
   padding: 0 12px 12px;
