@@ -86,6 +86,12 @@ function requireAuth(): array
     return $user;
 }
 
+/** Returns current user or null — does NOT block anonymous requests. */
+function optionalAuth(): ?array
+{
+    return getCurrentUser();
+}
+
 function getUserListId(int $userId): ?string
 {
     $stmt = getDb()->prepare('SELECT id FROM lists WHERE owner_id = ? LIMIT 1');
@@ -96,25 +102,28 @@ function getUserListId(int $userId): ?string
 
 // ── Access control ───────────────────────────────────────────────────────────
 
-function canReadList(string $listId, int $userId): bool
+function canReadList(string $listId, ?int $userId): bool
 {
     $stmt = getDb()->prepare('SELECT owner_id, is_public FROM lists WHERE id = ?');
     $stmt->execute([$listId]);
     $list = $stmt->fetch();
     if (!$list) return false;
-    if ((int)$list['owner_id'] === $userId) return true;
+    if ($userId && (int)$list['owner_id'] === $userId) return true;
 
-    // Editor
-    $stmt = getDb()->prepare('SELECT 1 FROM list_members WHERE list_id = ? AND user_id = ?');
-    $stmt->execute([$listId, $userId]);
-    if ($stmt->fetch()) return true;
+    if ($userId) {
+        // Editor
+        $stmt = getDb()->prepare('SELECT 1 FROM list_members WHERE list_id = ? AND user_id = ?');
+        $stmt->execute([$listId, $userId]);
+        if ($stmt->fetch()) return true;
+    }
 
-    // Public list — any authenticated user can read
+    // Public list — readable by anyone (including anonymous)
     return (bool)$list['is_public'];
 }
 
-function canWriteList(string $listId, int $userId): bool
+function canWriteList(string $listId, ?int $userId): bool
 {
+    if (!$userId) return false;
     $stmt = getDb()->prepare('SELECT owner_id FROM lists WHERE id = ?');
     $stmt->execute([$listId]);
     $list = $stmt->fetch();

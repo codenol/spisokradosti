@@ -3,30 +3,51 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 
 startSession();
-$user   = requireAuth();
-$userId = (int)$user['id'];
 $action = $_GET['action'] ?? '';
 $body   = bodyJson();
 $method = $_SERVER['REQUEST_METHOD'];
 
-// GET ?action=search&q=xxx  →  public lists
+// GET ?action=search&q=xxx  →  public lists, no auth required
 if ($method === 'GET' && $action === 'search') {
-    $q    = '%' . trim($_GET['q'] ?? '') . '%';
-    $stmt = getDb()->prepare(
-        'SELECT l.id, l.name, u.username, l.updated_at,
-                (SELECT COUNT(*) FROM wishes WHERE list_id = l.id) AS wish_count,
-                (SELECT COUNT(*) FROM list_subscriptions WHERE list_id = l.id) AS subscriber_count,
-                EXISTS(SELECT 1 FROM list_subscriptions WHERE list_id = l.id AND user_id = ?) AS is_subscribed
-         FROM lists l
-         JOIN users u ON u.id = l.owner_id
-         WHERE l.is_public = 1 AND l.owner_id != ?
-           AND (l.name LIKE ? OR u.username LIKE ?)
-         ORDER BY subscriber_count DESC, l.updated_at DESC
-         LIMIT 30'
-    );
-    $stmt->execute([$userId, $userId, $q, $q]);
+    $anonUser = optionalAuth();
+    $anonId   = $anonUser ? (int)$anonUser['id'] : null;
+    $q        = '%' . trim($_GET['q'] ?? '') . '%';
+
+    if ($anonId) {
+        $stmt = getDb()->prepare(
+            'SELECT l.id, l.name, u.username, l.updated_at,
+                    (SELECT COUNT(*) FROM wishes WHERE list_id = l.id) AS wish_count,
+                    (SELECT COUNT(*) FROM list_subscriptions WHERE list_id = l.id) AS subscriber_count,
+                    EXISTS(SELECT 1 FROM list_subscriptions WHERE list_id = l.id AND user_id = ?) AS is_subscribed
+             FROM lists l
+             JOIN users u ON u.id = l.owner_id
+             WHERE l.is_public = 1 AND l.owner_id != ?
+               AND (l.name LIKE ? OR u.username LIKE ?)
+             ORDER BY subscriber_count DESC, l.updated_at DESC
+             LIMIT 30'
+        );
+        $stmt->execute([$anonId, $anonId, $q, $q]);
+    } else {
+        $stmt = getDb()->prepare(
+            'SELECT l.id, l.name, u.username, l.updated_at,
+                    (SELECT COUNT(*) FROM wishes WHERE list_id = l.id) AS wish_count,
+                    (SELECT COUNT(*) FROM list_subscriptions WHERE list_id = l.id) AS subscriber_count,
+                    0 AS is_subscribed
+             FROM lists l
+             JOIN users u ON u.id = l.owner_id
+             WHERE l.is_public = 1
+               AND (l.name LIKE ? OR u.username LIKE ?)
+             ORDER BY subscriber_count DESC, l.updated_at DESC
+             LIMIT 30'
+        );
+        $stmt->execute([$q, $q]);
+    }
     jsonOut($stmt->fetchAll());
 }
+
+// All remaining actions require authentication
+$user   = requireAuth();
+$userId = (int)$user['id'];
 
 // GET ?action=subscriptions  →  lists I subscribed to
 if ($method === 'GET' && $action === 'subscriptions') {

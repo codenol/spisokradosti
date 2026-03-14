@@ -193,6 +193,10 @@ const App = (() => {
           ${item.category === 'place'
             ? `<button class="btn-card btn-card-secondary btn-sm btn-icon-only" onclick="App.openEditModal('${item.id}')" title="Изменить">${icon('pencil', 'icon-sm')}</button>`
             : `<button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>`}
+        </div>` : _isReadOnly() && typeof Auth !== 'undefined' && Auth.currentListId() ? `<div class="card-footer">
+          <button class="btn-card btn-card-primary btn-sm" onclick="App.addToMyList('${item.id}')">
+            ${icon('bookmark-plus', 'icon-sm')} В мой список
+          </button>
         </div>` : ''}
         ${visitsHtml}
       </div>
@@ -548,6 +552,31 @@ const App = (() => {
       });
     } catch {
       resultsEl.innerHTML = '<div class="geocode-result-item">Ошибка поиска</div>';
+    }
+  }
+
+  async function addToMyList(itemId) {
+    const sourceListId = typeof Auth !== 'undefined' ? Auth.currentListId() : null;
+    if (!sourceListId) return;
+
+    if (typeof Auth !== 'undefined' && Auth.isAnon()) {
+      sessionStorage.setItem('_pendingAddToList', JSON.stringify({ itemId, sourceListId }));
+      await Auth.showLoginModal();
+      return; // page reloads after login
+    }
+
+    try {
+      const res = await fetch('api/wishes.php?action=copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ source_id: itemId, source_list_id: sourceListId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка');
+      showSettingsStatus('Добавлено в ваш список!', 'ok');
+    } catch (e) {
+      showSettingsStatus(e.message, 'error');
     }
   }
 
@@ -1157,7 +1186,9 @@ const App = (() => {
   // ===================== AUTH / MULTI-USER =====================
 
   function _isReadOnly() {
-    return typeof Auth !== 'undefined' && Auth.isAuthed() && !Auth.isViewingOwn();
+    if (typeof Auth === 'undefined') return false;
+    if (Auth.isAnon()) return true;
+    return Auth.isAuthed() && !Auth.isViewingOwn();
   }
 
   function updateTopbarContext() {
@@ -1175,9 +1206,9 @@ const App = (() => {
   }
 
   async function switchToList(listId) {
-    Auth.setViewingList(listId);
+    if (typeof Auth !== 'undefined') Auth.setViewingList(listId);
     await Storage.setListId(listId);
-    updateTopbarContext();
+    if (typeof Auth !== 'undefined' && (Auth.isAuthed() || Auth.isAnon())) updateTopbarContext();
     switchView('list');
     renderList();
     icons();
@@ -1196,9 +1227,12 @@ const App = (() => {
   // ── Discover ──────────────────────────────────────────────────────────────
 
   async function renderDiscover() {
-    if (typeof Auth === 'undefined' || !Auth.isAuthed()) return;
+    if (typeof Auth === 'undefined') return;
+    const subSection = document.getElementById('discover-subscriptions-section');
     const subEl = document.getElementById('discover-subscriptions-list');
-    if (!subEl) return;
+    // Subscriptions only for authenticated users
+    if (subSection) subSection.classList.toggle('hidden', !Auth.isAuthed());
+    if (!Auth.isAuthed() || !subEl) return;
     try {
       const res  = await fetch('api/lists.php?action=subscriptions', { credentials: 'include' });
       const subs = await res.json();
@@ -1225,7 +1259,8 @@ const App = (() => {
   }
 
   function _listCardHtml(list) {
-    const subBtn = +list.is_subscribed
+    const authed = typeof Auth !== 'undefined' && Auth.isAuthed();
+    const subBtn = !authed ? '' : +list.is_subscribed
       ? `<button class="btn-secondary btn-sm" onclick="App.unsubscribeList('${list.id}')">Отписаться</button>`
       : `<button class="btn-primary btn-sm" onclick="App.subscribeList('${list.id}')">Подписаться</button>`;
     return `<div class="list-card">
@@ -1385,13 +1420,38 @@ const App = (() => {
       user = await Auth.init();   // shows login modal if needed, waits for login
     }
 
+    const isAnon = typeof Auth !== 'undefined' && Auth.isAnon();
     const listId = user ? user.list_id : null;
     await Storage.init(listId);
 
-    if (user) updateTopbarContext();
-    if (user && typeof Auth !== 'undefined' && Auth.isAuthed()) loadIncomingInvites();
+    if (user) {
+      // Check for pending "add to my list" action (set before login from anon state)
+      const pendingRaw = sessionStorage.getItem('_pendingAddToList');
+      if (pendingRaw) {
+        sessionStorage.removeItem('_pendingAddToList');
+        try {
+          const { itemId, sourceListId } = JSON.parse(pendingRaw);
+          await fetch('api/wishes.php?action=copy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ source_id: itemId, source_list_id: sourceListId }),
+          });
+          await Storage.init(listId); // reload own list to show copied item
+        } catch { /* ignore copy errors */ }
+      }
+      updateTopbarContext();
+      if (Auth.isAuthed()) loadIncomingInvites();
+    }
 
-    renderList();
+    if (isAnon) {
+      // Anon users: hide personal nav items, start on discover
+      document.querySelectorAll('[data-view="route"],[data-view="walk"]')
+        .forEach(el => el.classList.add('hidden'));
+      switchView('discover');
+    } else {
+      renderList();
+    }
     icons();
   }
 
@@ -1412,6 +1472,7 @@ const App = (() => {
     loadSavedRoute,
     deleteSavedRoute,
     openWalkAddModal,
+    addToMyList,
     addToRouteFromList,
     // multi-user
     switchToList,

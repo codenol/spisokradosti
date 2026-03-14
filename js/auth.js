@@ -3,7 +3,7 @@
 const Auth = (() => {
 
   let _user          = null;  // {id, username, email, list_id}
-  let _mode          = 'guest'; // 'guest' | 'auth'
+  let _mode          = 'guest'; // 'guest' | 'auth' | 'anon'
   let _viewingListId = null;  // null = own list
   let _resolveModal  = null;
 
@@ -44,6 +44,7 @@ const Auth = (() => {
   const getUser         = ()  => _user;
   const getMode         = ()  => _mode;
   const isGuest         = ()  => _mode === 'guest';
+  const isAnon          = ()  => _mode === 'anon';
   const isAuthed        = ()  => _mode === 'auth' && !!_user;
   const currentListId   = ()  => _viewingListId || (_user ? _user.list_id : null);
   const isViewingOwn    = ()  => !_viewingListId || (_user && _viewingListId === _user.list_id);
@@ -107,7 +108,12 @@ const Auth = (() => {
   }
 
   function skipAuth() {
+    _mode = 'anon';
     _hideModal();
+  }
+
+  function showLoginModal() {
+    return _showModal();
   }
 
   /** Wire up modal form events — call once after DOMContentLoaded */
@@ -130,12 +136,14 @@ const Auth = (() => {
       loginErr.textContent = '';
       const btn = loginForm.querySelector('button[type=submit]');
       btn.disabled = true;
+      const wasAnon = (_mode === 'anon');
       try {
         await login(
           loginForm.querySelector('[name=email]').value,
           loginForm.querySelector('[name=password]').value,
         );
         _hideModal();
+        if (wasAnon) { location.reload(); return; }
       } catch (err) {
         loginErr.textContent = err.message;
       } finally {
@@ -148,6 +156,7 @@ const Auth = (() => {
       regErr.textContent = '';
       const btn = regForm.querySelector('button[type=submit]');
       btn.disabled = true;
+      const wasAnon = (_mode === 'anon');
       try {
         await register(
           regForm.querySelector('[name=username]').value,
@@ -155,6 +164,7 @@ const Auth = (() => {
           regForm.querySelector('[name=password]').value,
         );
         _hideModal();
+        if (wasAnon) { location.reload(); return; }
       } catch (err) {
         regErr.textContent = err.message;
       } finally {
@@ -175,8 +185,8 @@ const Auth = (() => {
   }
 
   return {
-    init, initUI, skipAuth,
-    getUser, getMode, isGuest, isAuthed,
+    init, initUI, skipAuth, showLoginModal,
+    getUser, getMode, isGuest, isAnon, isAuthed,
     currentListId, isViewingOwn, setViewingList, resetViewingList,
     login, register, logout,
   };
