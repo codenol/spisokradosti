@@ -69,6 +69,9 @@ const App = (() => {
     if (name === 'trips'     && typeof TripsModule     !== 'undefined') TripsModule.renderTripsList();
 
     if (name === 'walk') {
+      // Reset POI layer toggles
+      document.querySelectorAll('.poi-chip').forEach(b => b.classList.remove('poi-chip--active'));
+      MapModule.clearPOILayers('walk');
       MapModule.invalidateWalkMap();
       MapModule.renderWalkMarkers(Storage.getAll());
       MapModule.startLocating(
@@ -1223,6 +1226,24 @@ const App = (() => {
     icons();
   }
 
+  // ── POI layers ────────────────────────────────────────────────────────────────
+
+  async function toggleWalkPOI(type) {
+    const loc = MapModule.getUserLocation();
+    if (!loc) { showToast('Сначала включите геолокацию'); return; }
+    const btn = document.querySelector(`.poi-chip[data-type="${type}"]`);
+    if (btn) btn.classList.add('poi-chip--loading');
+    try {
+      const map = MapModule.getWalkMapInstance();
+      const visible = await MapModule.togglePOILayer(map, 'walk', type, loc.lat, loc.lng, 1500);
+      if (btn) btn.classList.toggle('poi-chip--active', visible);
+    } catch (e) {
+      showToast('Не удалось загрузить данные');
+    } finally {
+      if (btn) btn.classList.remove('poi-chip--loading');
+    }
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────────
 
   return {
@@ -1239,6 +1260,7 @@ const App = (() => {
     openWalkAddModal,
     switchUser,
     openTemplateEditor,
+    toggleWalkPOI,
     closeModal,
     // Exposed for metro editor (onclick attributes)
     _updateMetro,

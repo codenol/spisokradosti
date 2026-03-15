@@ -1669,3 +1669,58 @@ a { color: inherit; }
   transition: all .25s ease; z-index: 9999; pointer-events: none;
 }
 .walk-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── POI Layer Bar ── */
+.poi-layer-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 8px 12px;
+  background: var(--bg, #fff);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+.poi-layer-bar::-webkit-scrollbar { display: none; }
+
+.poi-chip {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border, #e5e7eb);
+  background: var(--card-bg, #fff);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+  min-height: 32px;
+}
+.poi-chip--active {
+  background: var(--color-place, #27AE60);
+  color: #fff;
+  border-color: var(--color-place, #27AE60);
+}
+.poi-chip--loading {
+  opacity: .55;
+  pointer-events: none;
+}
+
+/* ── POI Markers ── */
+.poi-marker {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.poi-cafe       { border-color: #e67e22; }
+.poi-restaurant { border-color: #c0392b; }
+.poi-museum     { border-color: #8e44ad; }
+.poi-historic   { border-color: #2c3e50; }
+.poi-park       { border-color: #27ae60; }

@@ -593,6 +593,73 @@ const MapModule = (() => {
     if (walkMap) setTimeout(() => walkMap.invalidateSize(), 50);
   }
 
+  // --- POI Layers ---
+  const _poiLayers = {}; // mapKey → { type → L.LayerGroup | null }
+  const _poiCache  = {}; // cacheKey → features[]
+
+  const POI_TYPES = {
+    cafe:       { emoji: '☕', label: 'Кафе',      q: 'node["amenity"="cafe"]' },
+    restaurant: { emoji: '🍽', label: 'Рестораны', q: 'node["amenity"="restaurant"]' },
+    museum:     { emoji: '🏛', label: 'Музеи',     q: 'node["tourism"="museum"]' },
+    historic:   { emoji: '🏰', label: 'Наследие',  q: 'node["historic"]' },
+    park:       { emoji: '🌳', label: 'Парки',     q: 'node["leisure"="park"]' },
+  };
+
+  async function fetchPOI(lat, lng, radius, type) {
+    const key = `${lat.toFixed(3)},${lng.toFixed(3)},${radius},${type}`;
+    if (_poiCache[key]) return _poiCache[key];
+    const q = POI_TYPES[type].q;
+    const body = `[out:json][timeout:10];(${q}(around:${radius},${lat},${lng}););out center;`;
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST', body: 'data=' + encodeURIComponent(body),
+    });
+    const data = await res.json();
+    const features = (data.elements || []).map(el => ({
+      lat: el.lat ?? el.center?.lat,
+      lng: el.lon ?? el.center?.lon,
+      name: el.tags?.name || POI_TYPES[type].label,
+      type,
+    })).filter(f => f.lat && f.lng);
+    _poiCache[key] = features;
+    return features;
+  }
+
+  // Returns true if layer is now visible, false if hidden
+  async function togglePOILayer(map, mapKey, type, lat, lng, radius) {
+    radius = radius || 1500;
+    if (!_poiLayers[mapKey]) _poiLayers[mapKey] = {};
+    const layers = _poiLayers[mapKey];
+    if (layers[type]) {
+      map.removeLayer(layers[type]);
+      layers[type] = null;
+      return false;
+    }
+    const def = POI_TYPES[type];
+    const features = await fetchPOI(lat, lng, radius, type);
+    const group = L.layerGroup();
+    features.forEach(function(f) {
+      L.marker([f.lat, f.lng], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="poi-marker poi-${type}">${def.emoji}</div>`,
+          iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14],
+        }),
+      }).bindPopup(`<div class="map-popup"><div class="map-popup-title">${escHtml(f.name)}</div></div>`, { maxWidth: 200 })
+        .addTo(group);
+    });
+    group.addTo(map);
+    layers[type] = group;
+    return true;
+  }
+
+  function clearPOILayers(mapKey) {
+    if (!_poiLayers[mapKey]) return;
+    Object.values(_poiLayers[mapKey]).forEach(function(g) { if (g) g.remove(); });
+    delete _poiLayers[mapKey];
+  }
+
+  function getWalkMapInstance() { return walkMap; }
+
   // --- Utils ---
   function escHtml(str) {
     return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -635,5 +702,10 @@ const MapModule = (() => {
     invalidateMainMap,
     invalidateRouteMap,
     invalidateWalkMap,
+    POI_TYPES,
+    fetchPOI,
+    togglePOILayer,
+    clearPOILayers,
+    getWalkMapInstance,
   };
 })();

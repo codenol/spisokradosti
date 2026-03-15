@@ -92,6 +92,13 @@
 
       <!-- WALK VIEW -->
       <section id="view-walk" class="view">
+        <div class="poi-layer-bar" id="walk-poi-bar">
+          <button class="poi-chip" data-type="cafe"       onclick="App.toggleWalkPOI('cafe')">☕ Кафе</button>
+          <button class="poi-chip" data-type="restaurant" onclick="App.toggleWalkPOI('restaurant')">🍽 Рестораны</button>
+          <button class="poi-chip" data-type="museum"     onclick="App.toggleWalkPOI('museum')">🏛 Музеи</button>
+          <button class="poi-chip" data-type="historic"   onclick="App.toggleWalkPOI('historic')">🏰 Наследие</button>
+          <button class="poi-chip" data-type="park"       onclick="App.toggleWalkPOI('park')">🌳 Парки</button>
+        </div>
         <div id="walk-map"></div>
         <div id="walk-panel" class="walk-panel">
           <div id="walk-locating" class="walk-locating">
