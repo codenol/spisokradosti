@@ -1,19 +1,44 @@
 'use strict';
 
 const App = (() => {
-  let currentView = 'list';
-  let currentFilter = 'all';
-  let mapTypeFilters = new Set(); // empty = show all
+  let currentView = 'places';
+  let placesStatusFilter = 'all';
+  let placesTypeFilter = 'all';
+  let walkRadiusMeters = 2000;
   let issuePopupTimer = null;
 
-  // Lucide icon helper
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
   function icon(name, cls = '') {
     return `<i data-lucide="${name}" class="icon${cls ? ' ' + cls : ''}"></i>`;
   }
 
   function icons() { if (window.lucide) lucide.createIcons(); }
 
-  // ===================== VIEWS =====================
+  function escHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
+  }
+
+  function shortAddr(addr) {
+    if (!addr) return '';
+    return addr.split(',').slice(0, 2).join(',').trim();
+  }
+
+  function formatPrice(p) { return Number(p).toLocaleString('ru-RU'); }
+
+  function openModal(id) {
+    document.getElementById(id).classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  // ── View switching ────────────────────────────────────────────────────────────
 
   function switchView(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -27,18 +52,22 @@ const App = (() => {
 
     currentView = name;
 
-    const titles = { list: 'Список желаний', map: 'Карта', route: 'Маршруты', walk: 'Гуляю', discover: 'Найти' };
+    const titles = {
+      places:    'Мои места',
+      templates: 'Шаблоны',
+      trips:     'Поездки',
+      walk:      'Гуляю',
+    };
     document.getElementById('view-title').textContent = titles[name] || '';
-    if (name === 'discover') renderDiscover();
 
-    if (name === 'map') {
-      MapModule.invalidateMainMap();
-      renderFilteredMarkers();
-    }
-    if (name === 'route') {
-      MapModule.invalidateRouteMap();
-      renderRoutePanel();
-    }
+    // Toggle add button visibility
+    const btnAdd = document.getElementById('btn-add');
+    if (btnAdd) btnAdd.classList.toggle('hidden', name !== 'places');
+
+    if (name === 'places') renderPlacesList();
+    if (name === 'templates' && typeof TemplatesModule !== 'undefined') TemplatesModule.renderTemplatesList();
+    if (name === 'trips'     && typeof TripsModule     !== 'undefined') TripsModule.renderTripsList();
+
     if (name === 'walk') {
       MapModule.invalidateWalkMap();
       MapModule.renderWalkMarkers(Storage.getAll());
@@ -52,153 +81,158 @@ const App = (() => {
     }
   }
 
-  // ===================== MAP FILTERS =====================
+  // ── Places list ───────────────────────────────────────────────────────────────
 
-  function renderFilteredMarkers() {
-    const all = Storage.getAll();
-    let items;
-    if (mapTypeFilters.size === 0) {
-      items = all;
-    } else {
-      items = all.filter(i => {
-        if (i.category === 'experience') return mapTypeFilters.has('experience');
-        if (i.category === 'place') return mapTypeFilters.has(i.placeType || 'other');
-        return false;
-      });
-    }
-    MapModule.renderMarkers(items);
-  }
-
-  function toggleMapFilter(type) {
-    if (type === 'all') {
-      mapTypeFilters.clear();
-    } else {
-      if (mapTypeFilters.has(type)) {
-        mapTypeFilters.delete(type);
-      } else {
-        mapTypeFilters.add(type);
-      }
-    }
-    // Sync chip active states
-    document.querySelectorAll('.map-filter-chip').forEach(chip => {
-      const t = chip.dataset.type;
-      if (t === 'all') {
-        chip.classList.toggle('active', mapTypeFilters.size === 0);
-      } else {
-        chip.classList.toggle('active', mapTypeFilters.has(t));
-      }
-    });
-    renderFilteredMarkers();
-  }
-
-  // ===================== LIST RENDER =====================
-
-  const placeTypeIcons = {
-    museum: 'landmark', mansion: 'castle', cafe: 'coffee',
-    restaurant: 'utensils', park: 'tree-pine', shop: 'shopping-bag', other: 'map-pin',
+  const placeTypeLabels = {
+    museum:     'Музей',
+    cafe:       'Кафе',
+    restaurant: 'Ресторан',
+    park:       'Парк',
+    hotel:      'Отель',
+    other:      'Место',
+    experience: 'Впечатление',
+    material:   'Вещь',
+    mansion:    'Особняк',
+    shop:       'Магазин',
   };
 
-  function renderList() {
-    const items = Storage.getAll();
-    const filtered = currentFilter === 'all' ? items : items.filter(i => i.category === currentFilter);
+  const placeTypeIcons = {
+    museum: 'landmark', cafe: 'coffee', restaurant: 'utensils',
+    park: 'tree-pine', hotel: 'hotel', other: 'map-pin',
+    experience: 'sparkles', material: 'gift', mansion: 'castle', shop: 'shopping-bag',
+  };
+
+  const flagDefs = {
+    booking_required: { emoji: '📅', label: 'Нужна бронь' },
+    seasonal:         { emoji: '🌿', label: 'Сезонное' },
+    crowded:          { emoji: '👥', label: 'Бывает людно' },
+    closed:           { emoji: '❌', label: 'Закрыто / изменилось' },
+    expensive:        { emoji: '💸', label: 'Дороже ожиданий' },
+    note:             { emoji: 'ℹ️', label: 'Нюанс' },
+  };
+
+  function flagIconsHtml(flags, withLabel = false) {
+    if (!flags || !flags.length) return '';
+    return flags.map(f => {
+      const def = flagDefs[f];
+      if (!def) return '';
+      return withLabel
+        ? `<span class="flag-item"><span class="flag-emoji">${def.emoji}</span><span class="flag-label">${escHtml(def.label)}</span></span>`
+        : `<span class="flag-emoji" title="${escHtml(def.label)}">${def.emoji}</span>`;
+    }).join('');
+  }
+
+  function metroStationsHtml(stations) {
+    if (!stations || !stations.length) return '';
+    return `<div class="metro-stations-row">${stations.map(s => `
+      <span class="metro-station">
+        <span class="metro-dot" style="background:${escHtml(s.line_color || '#888')}"></span>
+        <span class="metro-name">${escHtml(s.name)}</span>
+        ${s.exit ? `<span class="metro-exit">вых.${escHtml(s.exit)}</span>` : ''}
+      </span>`).join('')}</div>`;
+  }
+
+  function renderStars(avg) {
+    const rounded = Math.round(avg);
+    return Array.from({ length: 5 }, (_, i) =>
+      `<i data-lucide="star" class="icon star-display${i < rounded ? ' filled' : ''}"></i>`
+    ).join('');
+  }
+
+  function visitLabel(n) {
+    if (n === 1) return 'Был 1 раз';
+    if (n >= 2 && n <= 4) return `Был ${n} раза`;
+    return `Был ${n} раз`;
+  }
+
+  function renderPlacesList() {
+    let items = Storage.getAll();
+
+    // Status filter
+    if (placesStatusFilter !== 'all') {
+      items = items.filter(i => i.status === placesStatusFilter);
+    }
+
+    // Type filter
+    if (placesTypeFilter !== 'all') {
+      items = items.filter(i => i.type === placesTypeFilter);
+    }
+
+    // Sort: wishlist first, then visited; within each group by priority desc
+    items.sort((a, b) => {
+      const sa = a.status === 'wishlist' ? 0 : 1;
+      const sb = b.status === 'wishlist' ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (b.priority || 2) - (a.priority || 2);
+    });
+
     const listEl = document.getElementById('wish-list');
     const emptyEl = document.getElementById('empty-state');
 
-    if (filtered.length === 0) {
-      listEl.innerHTML = '';
-      emptyEl.classList.remove('hidden');
+    if (items.length === 0) {
+      if (listEl) listEl.innerHTML = '';
+      if (emptyEl) emptyEl.classList.remove('hidden');
       return;
     }
-    emptyEl.classList.add('hidden');
-    listEl.innerHTML = filtered.map(cardHtml).join('');
-    icons();
-    bindCardEvents();
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (listEl) {
+      listEl.innerHTML = items.map(placeCardHtml).join('');
+      icons();
+    }
   }
 
-  function cardHtml(item) {
-    const avg = Storage.avgRating(item);
-    const visited = Storage.wasVisited(item);
-    const issue = Storage.hasIssue(item);
+  function placeCardHtml(item) {
+    const avg      = Storage.avgRating(item);
+    const visited  = item.status === 'visited';
+    const flags    = item.flags || [];
+    const typeLabel = placeTypeLabels[item.type] || item.type || '';
+    const typeIconName = placeTypeIcons[item.type] || 'map-pin';
+    const addr     = item.address || (item.location && item.location.address) || '';
+    const starsHtml = avg > 0 ? `<span class="stars">${renderStars(avg)}</span>` : '';
+    const flagsHtml = flagIconsHtml(flags);
+    const statusBadge = visited
+      ? `<span class="badge badge-visited">Был</span>`
+      : `<span class="badge badge-wishlist">Хочу</span>`;
+    const metroHtml = item.metro_stations && item.metro_stations.length
+      ? metroStationsHtml(item.metro_stations) : '';
+
     const visits = item.visits || [];
-
-    const categoryLabels = {
-      place: `${icon('map-pin', 'icon-sm')} Место`,
-      experience: `${icon('sparkles', 'icon-sm')} Впечатление`,
-      material: `${icon('gift', 'icon-sm')} Вещь`,
-    };
-    const categoryBadgeClass = { place: 'badge-place', experience: 'badge-experience', material: 'badge-material' };
-    const priorityDots = { 1: 'p1', 2: 'p2', 3: 'p3' };
-    const placeTypeLabels = {
-      museum: `${icon('landmark', 'icon-sm')} Музей`,
-      mansion: `${icon('castle', 'icon-sm')} Особняк/Усадьба`,
-      cafe: `${icon('coffee', 'icon-sm')} Кафе`,
-      restaurant: `${icon('utensils', 'icon-sm')} Ресторан`,
-      park: `${icon('tree-pine', 'icon-sm')} Парк`,
-      shop: `${icon('shopping-bag', 'icon-sm')} Магазин`,
-      other: `${icon('map-pin', 'icon-sm')} Другое`,
-    };
-
-    let imageHtml = '';
-    if (item.category === 'material' && item.imageUrl) {
-      imageHtml = `<img class="card-image" src="${escHtml(item.imageUrl)}" alt="${escHtml(item.title)}" loading="lazy" onerror="this.style.display='none'">`;
-    }
-
-    let metaItems = [];
-    if (item.category === 'material') {
-      if (item.price) metaItems.push(`${icon('banknote', 'meta-icon')} ${formatPrice(item.price)} ₽`);
-      if (item.shopUrl) metaItems.push(`<a href="${escHtml(item.shopUrl)}" target="_blank" rel="noopener">${icon('shopping-cart', 'meta-icon')} Магазин</a>`);
-    } else if (item.category === 'place') {
-      if (item.placeType) metaItems.push(placeTypeLabels[item.placeType] || item.placeType);
-      if (item.priceText) metaItems.push(`${icon('banknote', 'meta-icon')} ${escHtml(item.priceText)}`);
-      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">${icon('globe', 'meta-icon')} Сайт</a>`);
-      if (item.location) metaItems.push(`<span style="color:var(--color-place)">${icon('map-pin', 'meta-icon')} ${escHtml(shortAddr(item.location.address))}</span>`);
-    } else if (item.category === 'experience') {
-      if (item.priceText) metaItems.push(`${icon('banknote', 'meta-icon')} ${escHtml(item.priceText)}`);
-      if (item.website) metaItems.push(`<a href="${escHtml(item.website)}" target="_blank" rel="noopener">${icon('globe', 'meta-icon')} Сайт</a>`);
-      if (item.location) metaItems.push(`<span style="color:var(--color-experience)">${icon('map-pin', 'meta-icon')} ${escHtml(shortAddr(item.location.address))}</span>`);
-    }
-
-    const starsHtml = avg > 0 ? `<span class="stars">${renderStars(avg)}</span> ` : '';
-    const visitCountHtml = visited ? `<span class="visit-count">${visitLabel(visits.length)}</span>` : '';
-
     const visitsHtml = visits.length > 0 ? `
       <div class="visits-accordion">
-        <button class="visits-toggle" data-id="${item.id}" onclick="App.toggleVisits('${item.id}',this)">
+        <button class="visits-toggle" onclick="App.toggleVisits('${item.id}',this)">
           ${icon('chevron-right', 'arrow')} История (${visits.length})
         </button>
         <div class="visits-list" id="visits-${item.id}">
-          ${visits.map(v => visitItemHtml(v)).join('')}
+          ${visits.map(visitItemHtml).join('')}
         </div>
       </div>` : '';
 
-    return `<div class="wish-card" data-id="${item.id}">
-      ${imageHtml}
+    return `<div class="wish-card" data-id="${item.id}" onclick="App.openPlaceDetail('${item.id}')">
       <div class="card-body">
         <div class="card-header">
-          <span class="card-title${visited ? ' visited' : ''}">${escHtml(item.title)}</span>
+          <span class="card-title${visited ? ' visited' : ''}">${escHtml(item.name || item.title || '')}</span>
           <div class="card-badges">
-            ${issue ? `<span class="badge badge-issue" onclick="App.showIssuePopup('${item.id}')" title="Нажмите, чтобы увидеть проблему">${icon('triangle-alert')}</span>` : ''}
-            <span class="badge ${categoryBadgeClass[item.category] || ''}">${categoryLabels[item.category] || item.category}</span>
-            <span class="priority-dot ${priorityDots[item.priority] || 'p2'}" title="Приоритет: ${item.priority}"></span>
+            ${statusBadge}
+            <span class="priority-dot p${item.priority || 2}" title="Приоритет: ${item.priority || 2}"></span>
           </div>
         </div>
-        ${item.description ? `<div class="card-description">${escHtml(item.description)}</div>` : ''}
-        ${metaItems.length > 0 ? `<div class="card-meta">${metaItems.join(' · ')}</div>` : ''}
-        ${starsHtml || visitCountHtml ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${starsHtml}${visitCountHtml}</div>` : ''}
-        ${!_isReadOnly() ? `<div class="card-footer">
-          ${item.category === 'place' && item.location ? `<button class="btn-card btn-card-route btn-sm" onclick="App.addToRouteFromList('${item.id}',this)">${icon('plus', 'icon-sm')} Маршрут</button>` : ''}
+        <div class="card-type-row">
+          ${icon(typeIconName, 'icon-sm meta-icon')} <span class="card-type-label">${escHtml(typeLabel)}</span>
+          ${addr ? `· <span class="card-addr">${escHtml(shortAddr(addr))}</span>` : ''}
+        </div>
+        ${metroHtml}
+        ${starsHtml ? `<div class="card-rating">${starsHtml}</div>` : ''}
+        ${flagsHtml ? `<div class="card-flags">${flagsHtml}</div>` : ''}
+        ${item.comment ? `<div class="card-description">${escHtml(item.comment)}</div>` : ''}
+        ${visitsHtml}
+        <div class="card-footer" onclick="event.stopPropagation()">
           <button class="btn-card btn-card-primary btn-sm" onclick="App.openVisitModal('${item.id}')">
             ${icon('star', 'icon-sm')} Оценить
           </button>
-          ${item.category === 'place'
-            ? `<button class="btn-card btn-card-secondary btn-sm btn-icon-only" onclick="App.openEditModal('${item.id}')" title="Изменить">${icon('pencil', 'icon-sm')}</button>`
-            : `<button class="btn-card btn-card-secondary btn-sm" onclick="App.openEditModal('${item.id}')">Изменить</button>`}
-        </div>` : _isReadOnly() && typeof Auth !== 'undefined' && Auth.currentListId() ? `<div class="card-footer">
-          <button class="btn-card btn-card-primary btn-sm" onclick="App.addToMyList('${item.id}')">
-            ${icon('bookmark-plus', 'icon-sm')} В мой список
+          <button class="btn-card btn-card-secondary btn-sm btn-icon-only" onclick="App.openEditModal('${item.id}')" title="Изменить">
+            ${icon('pencil', 'icon-sm')}
           </button>
-        </div>` : ''}
-        ${visitsHtml}
+        </div>
       </div>
     </div>`;
   }
@@ -216,75 +250,134 @@ const App = (() => {
     </div>`;
   }
 
-  function renderStars(avg) {
-    const rounded = Math.round(avg);
-    return Array.from({length: 5}, (_, i) =>
-      `<i data-lucide="star" class="icon star-display${i < rounded ? ' filled' : ''}"></i>`
-    ).join('');
-  }
-
-  function visitLabel(n) {
-    if (n === 1) return 'Был 1 раз';
-    if (n >= 2 && n <= 4) return `Был ${n} раза`;
-    return `Был ${n} раз`;
-  }
-
-  function shortAddr(addr) {
-    if (!addr) return '';
-    const parts = addr.split(',');
-    return parts.slice(0, 2).join(',').trim();
-  }
-
-  function formatPrice(p) {
-    return Number(p).toLocaleString('ru-RU');
-  }
-
-  function bindCardEvents() {
-    // no dynamic binding needed — all via onclick attributes
-  }
-
   function toggleVisits(id, btn) {
     const list = document.getElementById(`visits-${id}`);
     if (!list) return;
     const open = list.classList.toggle('open');
     btn.classList.toggle('open', open);
+    icons();
   }
 
-  function showIssuePopup(id) {
+  // ── Place detail ──────────────────────────────────────────────────────────────
+
+  function openPlaceDetail(id) {
     const item = Storage.getById(id);
     if (!item) return;
-    const issue = Storage.latestIssue(item);
-    if (!issue) return;
 
-    clearTimeout(issuePopupTimer);
-    let popup = document.getElementById('issue-popup');
-    if (!popup) {
-      popup = document.createElement('div');
-      popup.id = 'issue-popup';
-      popup.className = 'issue-popup';
-      document.body.appendChild(popup);
-    }
-    popup.innerHTML = `${icon('triangle-alert', 'icon-sm')} ${escHtml(issue)}`;
+    const avg   = Storage.avgRating(item);
+    const flags = item.flags || [];
+    const addr  = item.address || (item.location && item.location.address) || '';
+    const lat   = item.coordinates ? item.coordinates.lat : (item.location && item.location.lat);
+    const lng   = item.coordinates ? item.coordinates.lng : (item.location && item.location.lng);
+
+    const starsHtml = avg > 0 ? `<div class="detail-rating">${renderStars(avg)} <span class="rating-num">${avg.toFixed(1)}</span></div>` : '';
+
+    const flagsSection = flags.length ? `
+      <div class="detail-section">
+        <div class="detail-section-title">Флаги</div>
+        <div class="flags-list">${flagIconsHtml(flags, true)}</div>
+      </div>` : '';
+
+    const metroSection = (item.metro_stations && item.metro_stations.length) ? `
+      <div class="detail-section">
+        <div class="detail-section-title">Метро</div>
+        ${metroStationsHtml(item.metro_stations)}
+      </div>` : '';
+
+    const commentSection = item.comment ? `
+      <div class="detail-section">
+        <div class="detail-section-title">Комментарий</div>
+        <div class="detail-comment">${escHtml(item.comment)}</div>
+      </div>` : '';
+
+    const priceSection = (item.price_note || item.price_range) ? `
+      <div class="detail-section">
+        <div class="detail-section-title">Цены</div>
+        <div class="detail-price">
+          ${item.price_range ? `<span class="price-range-badge pr-${item.price_range}">${{'budget':'₽ Бюджетно','mid':'₽₽ Средне','expensive':'₽₽₽ Дорого'}[item.price_range] || ''}</span>` : ''}
+          ${item.price_note ? `<span class="price-note">${escHtml(item.price_note)}</span>` : ''}
+        </div>
+      </div>` : '';
+
+    const mapSection = (lat && lng) ? `
+      <div class="detail-section">
+        <div id="place-detail-map" class="place-detail-map"></div>
+        <div class="detail-map-links">
+          <a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" rel="noopener" class="btn-ghost-small">Google Maps</a>
+          <a href="https://yandex.ru/maps/?pt=${lng},${lat}&z=17" target="_blank" rel="noopener" class="btn-ghost-small">Яндекс Карты</a>
+        </div>
+      </div>` : '';
+
+    const visits = item.visits || [];
+    const historySection = visits.length ? `
+      <div class="detail-section">
+        <div class="detail-section-title">История посещений</div>
+        ${visits.map(visitItemHtml).join('')}
+      </div>` : '';
+
+    const typeLabel = placeTypeLabels[item.type] || item.type || '';
+
+    document.getElementById('place-detail-title').textContent = item.name || item.title || '';
+    document.getElementById('place-detail-body').innerHTML = `
+      <div class="detail-meta">
+        ${icon(placeTypeIcons[item.type] || 'map-pin', 'icon-sm meta-icon')} ${escHtml(typeLabel)}
+        ${addr ? `· ${escHtml(shortAddr(addr))}` : ''}
+      </div>
+      ${starsHtml}
+      ${flagsSection}
+      ${metroSection}
+      ${commentSection}
+      ${priceSection}
+      ${mapSection}
+      ${historySection}
+      <div class="detail-actions">
+        <button class="btn-primary btn-sm" onclick="App.openVisitModal('${item.id}')">
+          ${icon('star', 'icon-sm')} Отметить посещение
+        </button>
+        <button class="btn-secondary btn-sm" onclick="App.openEditModal('${item.id}');App.closeModal('place-detail-modal')">
+          ${icon('pencil', 'icon-sm')} Изменить
+        </button>
+        ${typeof TemplatesModule !== 'undefined' ? `<button class="btn-ghost btn-sm" onclick="TemplatesModule.addPlaceToTemplate('${item.id}')">+ В шаблон</button>` : ''}
+        ${typeof TripsModule !== 'undefined' ? `<button class="btn-ghost btn-sm" onclick="TripsModule.addPlaceToTrip('${item.id}')">+ В поездку</button>` : ''}
+      </div>
+    `;
+
+    openModal('place-detail-modal');
     icons();
-    popup.style.display = 'block';
-    issuePopupTimer = setTimeout(() => { popup.style.display = 'none'; }, 3500);
+
+    // Init mini-map after modal opens
+    if (lat && lng) {
+      setTimeout(() => {
+        const mapEl = document.getElementById('place-detail-map');
+        if (mapEl && !mapEl._leaflet_id) {
+          const miniMap = L.map('place-detail-map', { zoomControl: false, dragging: false, scrollWheelZoom: false }).setView([lat, lng], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(miniMap);
+          L.marker([lat, lng]).addTo(miniMap);
+          mapEl.addEventListener('click', () => {
+            window.open(`https://maps.google.com/?q=${lat},${lng}`, '_blank');
+          });
+        }
+      }, 300);
+    }
   }
 
-  // ===================== ADD/EDIT MODAL =====================
+  // ── Add/Edit modal ────────────────────────────────────────────────────────────
 
-  let locationPickResult = null; // { lat, lng, address }
+  let locationPickResult = null;
+  let _metroStations = []; // metro stations being edited
 
   function openAddModal() {
     locationPickResult = null;
+    _metroStations = [];
     const form = document.getElementById('wish-form');
     form.reset();
     document.querySelector('input[name="id"]').value = '';
     document.querySelector('input[name="priority"][value="2"]').checked = true;
-    document.getElementById('modal-title').textContent = 'Новое желание';
+    document.getElementById('modal-title').textContent = 'Новое место';
     document.getElementById('btn-delete-wish').classList.add('hidden');
-    selectCategory('material');
     updateLocationDisplay(null);
     MapModule.clearLocationMarker();
+    renderMetroStationsList();
     openModal('modal');
     setTimeout(() => MapModule.resizeLocationMap(), 300);
   }
@@ -292,98 +385,92 @@ const App = (() => {
   function openEditModal(id) {
     const item = Storage.getById(id);
     if (!item) return;
-    locationPickResult = item.location || null;
+
+    const lat = item.coordinates ? item.coordinates.lat : (item.location && item.location.lat);
+    const lng = item.coordinates ? item.coordinates.lng : (item.location && item.location.lng);
+    const addr = item.address || (item.location && item.location.address) || '';
+    locationPickResult = (lat && lng) ? { lat, lng, address: addr } : null;
+
+    _metroStations = (item.metro_stations || []).map(s => ({ ...s }));
 
     const form = document.getElementById('wish-form');
     form.reset();
 
     document.querySelector('input[name="id"]').value = item.id;
-    document.querySelector('input[name="title"]').value = item.title || '';
-    document.querySelector('textarea[name="description"]').value = item.description || '';
+    document.querySelector('input[name="title"]').value = item.name || item.title || '';
+    document.querySelector('textarea[name="comment"]').value = item.comment || item.description || '';
     document.querySelector('input[name="priority"][value="' + (item.priority || 2) + '"]').checked = true;
-
-    document.getElementById('modal-title').textContent = 'Изменить желание';
+    document.getElementById('modal-title').textContent = 'Изменить место';
     document.getElementById('btn-delete-wish').classList.remove('hidden');
 
-    selectCategory(item.category);
+    // Type
+    const typeSelect = form.elements['placeType'];
+    if (typeSelect) typeSelect.value = item.type || item.placeType || 'other';
 
-    if (item.category === 'material') {
-      setField(form, 'shopUrl', item.shopUrl || '');
-      setField(form, 'price', item.price || '');
-      setField(form, 'imageUrl', item.imageUrl || '');
-    } else if (item.category === 'place') {
-      setField(form, 'placeType', item.placeType || 'other');
-      setField(form, 'priceText', item.priceText || '');
-      setField(form, 'website', item.website || '');
-    } else if (item.category === 'experience') {
-      setField(form, 'priceText', item.priceText || '');
-      setField(form, 'website', item.website || '');
-    }
+    // Price range
+    const pr = item.price_range || 'mid';
+    const prInput = form.querySelector(`input[name="price_range"][value="${pr}"]`);
+    if (prInput) prInput.checked = true;
+    const priceNoteEl = form.elements['price_note'];
+    if (priceNoteEl) priceNoteEl.value = item.price_note || item.priceText || '';
 
-    if (item.location) {
-      updateLocationDisplay(item.location);
-      MapModule.setLocationMarker(item.location.lat, item.location.lng);
+    // Flags
+    form.querySelectorAll('input[name="flags"]').forEach(cb => {
+      cb.checked = (item.flags || []).includes(cb.value);
+    });
+
+    // Location
+    if (locationPickResult) {
+      updateLocationDisplay(locationPickResult);
+      MapModule.setLocationMarker(lat, lng);
     } else {
       updateLocationDisplay(null);
       MapModule.clearLocationMarker();
     }
 
+    renderMetroStationsList();
     openModal('modal');
     setTimeout(() => MapModule.resizeLocationMap(), 300);
   }
 
-  function setField(form, name, value) {
-    const el = form.elements[name];
+  // ── Metro station editor ──────────────────────────────────────────────────────
+
+  function renderMetroStationsList() {
+    const el = document.getElementById('metro-stations-list');
     if (!el) return;
-    el.value = value;
+    el.innerHTML = _metroStations.map((s, i) => `
+      <div class="metro-row" data-idx="${i}">
+        <input class="form-input metro-input" placeholder="Станция *" value="${escHtml(s.name || '')}" onchange="App._updateMetro(${i},'name',this.value)">
+        <input class="form-input metro-input" placeholder="Линия" value="${escHtml(s.line || '')}" onchange="App._updateMetro(${i},'line',this.value)">
+        <div class="metro-color-row">
+          <input type="color" class="metro-color-input" value="${escHtml(s.line_color || '#888888')}" onchange="App._updateMetro(${i},'line_color',this.value)" title="Цвет линии">
+          <input class="form-input metro-input metro-exit-input" placeholder="Выход" value="${escHtml(s.exit || '')}" onchange="App._updateMetro(${i},'exit',this.value)">
+          <button type="button" class="btn-ghost-small metro-remove-btn" onclick="App._removeMetro(${i})">✕</button>
+        </div>
+      </div>`).join('');
   }
 
-  function selectCategory(cat) {
-    document.querySelector('input[name="category"]').value = cat;
-    document.querySelectorAll('.cat-tab').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.cat === cat);
-    });
-    document.querySelectorAll('.form-fields').forEach(el => el.classList.add('hidden'));
-    const fieldsEl = document.querySelector(`.fields-${cat}`);
-    if (fieldsEl) fieldsEl.classList.remove('hidden');
-
-    const locSection = document.getElementById('location-section');
-    if (cat === 'place' || cat === 'experience') {
-      locSection.classList.remove('hidden');
-    } else {
-      locSection.classList.add('hidden');
-    }
-    setTimeout(() => MapModule.resizeLocationMap(), 100);
+  function _updateMetro(idx, field, value) {
+    if (_metroStations[idx]) _metroStations[idx][field] = value;
   }
 
-  function updateLocationDisplay(loc) {
-    const display = document.getElementById('location-display');
-    const text = document.getElementById('location-text');
-    if (loc) {
-      display.classList.remove('hidden');
-      text.textContent = shortAddr(loc.address) || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
-      document.querySelector('input[name="locationLat"]').value = loc.lat;
-      document.querySelector('input[name="locationLng"]').value = loc.lng;
-      document.querySelector('input[name="locationAddress"]').value = loc.address || '';
-    } else {
-      display.classList.add('hidden');
-      document.querySelector('input[name="locationLat"]').value = '';
-      document.querySelector('input[name="locationLng"]').value = '';
-      document.querySelector('input[name="locationAddress"]').value = '';
-    }
+  function _removeMetro(idx) {
+    _metroStations.splice(idx, 1);
+    renderMetroStationsList();
   }
 
-  function openModal(id) {
-    document.getElementById(id).classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+  function _addMetro() {
+    _metroStations.push({ name: '', line: '', line_color: '#888888', exit: '' });
+    renderMetroStationsList();
+    // Focus last station name input
+    setTimeout(() => {
+      const rows = document.querySelectorAll('.metro-row');
+      if (rows.length) rows[rows.length - 1].querySelector('.metro-input')?.focus();
+    }, 50);
   }
 
-  function closeModal(id) {
-    document.getElementById(id).classList.add('hidden');
-    document.body.style.overflow = '';
-  }
+  // ── Form submit ───────────────────────────────────────────────────────────────
 
-  // --- Form submit ---
   function handleWishFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
@@ -394,77 +481,94 @@ const App = (() => {
       return;
     }
 
-    const cat = data.category;
-
-    if (cat === 'place' && !data.locationLat) {
-      alert('Пожалуйста, укажите местоположение для места на карте.');
+    if (!data.locationLat) {
+      alert('Пожалуйста, укажите местоположение на карте.');
       return;
     }
 
-    const item = {
-      id: data.id || Storage.genId(),
-      category: cat,
-      title: data.title.trim(),
-      description: (data.description || '').trim(),
-      priority: parseInt(data.priority, 10) || 2,
-      createdAt: data.id ? (Storage.getById(data.id) || {}).createdAt || Date.now() : Date.now(),
-      visits: data.id ? (Storage.getById(data.id) || {}).visits || [] : [],
-    };
+    const existingItem = data.id ? Storage.getById(data.id) : null;
+    const user = Storage.getActiveUser();
 
-    if (cat === 'material') {
-      item.shopUrl = (data.shopUrl || '').trim();
-      item.price = data.price ? parseFloat(data.price) : null;
-      item.imageUrl = (data.imageUrl || '').trim();
-    } else if (cat === 'place') {
-      item.placeType = data.placeType || 'other';
-      item.priceText = (data.priceText || '').trim();
-      item.website = (data.website || '').trim();
-      item.location = {
+    // Collect flags (checkboxes)
+    const flags = Array.from(form.querySelectorAll('input[name="flags"]:checked')).map(cb => cb.value);
+
+    // Filter out incomplete metro stations
+    const metro_stations = _metroStations
+      .filter(s => s.name && s.name.trim())
+      .map(s => ({
+        name:       s.name.trim(),
+        line:       (s.line || '').trim(),
+        line_color: s.line_color || '#888888',
+        exit:       (s.exit || '').trim() || null,
+      }));
+
+    const item = {
+      id:          data.id || Storage.genId(),
+      // Legacy fields (for backward compat)
+      category:    'place',
+      title:       data.title.trim(),
+      description: (data.comment || '').trim(),
+      // New fields
+      name:        data.title.trim(),
+      type:        data.placeType || 'other',
+      placeType:   data.placeType || 'other',
+      coordinates: {
         lat: parseFloat(data.locationLat),
         lng: parseFloat(data.locationLng),
+      },
+      location: {
+        lat:     parseFloat(data.locationLat),
+        lng:     parseFloat(data.locationLng),
         address: data.locationAddress || '',
-      };
-    } else if (cat === 'experience') {
-      item.priceText = (data.priceText || '').trim();
-      item.website = (data.website || '').trim();
-      item.location = data.locationLat ? {
-        lat: parseFloat(data.locationLat),
-        lng: parseFloat(data.locationLng),
-        address: data.locationAddress || '',
-      } : null;
-    }
+      },
+      address:      data.locationAddress || '',
+      metro_stations,
+      flags,
+      comment:      (data.comment || '').trim(),
+      price_range:  data.price_range || 'mid',
+      price_note:   (data.price_note || '').trim(),
+      priority:     parseInt(data.priority, 10) || 2,
+      status:       existingItem ? (existingItem.status || 'wishlist') : 'wishlist',
+      added_by:     existingItem ? (existingItem.added_by || user.id) : user.id,
+      createdAt:    existingItem ? existingItem.createdAt || Date.now() : Date.now(),
+      visits:       existingItem ? (existingItem.visits || []) : [],
+      _migrated_v2: true,
+    };
 
     Storage.save(item);
     closeModal('modal');
-    renderList();
-    renderFilteredMarkers();
-    if (currentView === 'route') renderRoutePanel();
-    if (currentView === 'walk') {
-      MapModule.renderWalkMarkers(mapItems);
-      const loc = MapModule.getUserLocation();
-      if (loc) renderNearbyPanel(loc.lat, loc.lng);
-    }
+    if (currentView === 'places') renderPlacesList();
+    MapModule.renderWalkMarkers(Storage.getAll());
   }
 
   function handleDeleteWish() {
     const id = document.querySelector('input[name="id"]').value;
     if (!id) return;
-    if (!confirm('Удалить это желание?')) return;
+    if (!confirm('Удалить это место?')) return;
     Storage.remove(id);
     closeModal('modal');
-    renderList();
-    renderFilteredMarkers();
-    MapModule.removeFromRoute(id);
-    MapModule.removeWalkItem(id);
-    if (currentView === 'route') renderRoutePanel();
-    if (currentView === 'walk') {
-      MapModule.renderWalkMarkers(Storage.getAll());
-      const loc = MapModule.getUserLocation();
-      if (loc) renderNearbyPanel(loc.lat, loc.lng);
+    if (currentView === 'places') renderPlacesList();
+    MapModule.renderWalkMarkers(Storage.getAll());
+  }
+
+  function updateLocationDisplay(loc) {
+    const display = document.getElementById('location-display');
+    const text    = document.getElementById('location-text');
+    if (loc) {
+      display.classList.remove('hidden');
+      text.textContent = shortAddr(loc.address) || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+      document.querySelector('input[name="locationLat"]').value  = loc.lat;
+      document.querySelector('input[name="locationLng"]').value  = loc.lng;
+      document.querySelector('input[name="locationAddress"]').value = loc.address || '';
+    } else {
+      display.classList.add('hidden');
+      document.querySelector('input[name="locationLat"]').value  = '';
+      document.querySelector('input[name="locationLng"]').value  = '';
+      document.querySelector('input[name="locationAddress"]').value = '';
     }
   }
 
-  // ===================== VISIT MODAL =====================
+  // ── Visit modal ───────────────────────────────────────────────────────────────
 
   let starRating = 0;
 
@@ -475,16 +579,13 @@ const App = (() => {
     starRating = 0;
     const form = document.getElementById('visit-form');
     form.reset();
-    document.querySelector('#visit-form input[name="wishId"]').value = wishId;
+    document.querySelector('#visit-form input[name="wishId"]').value  = wishId;
     document.querySelector('#visit-form input[name="visitId"]').value = '';
-    document.querySelector('#visit-form input[name="rating"]').value = '';
-    document.getElementById('visit-modal-title').textContent =
-      item.category === 'material' ? 'Отметить покупку' : 'Отметить посещение';
-
+    document.querySelector('#visit-form input[name="rating"]').value  = '';
+    document.getElementById('visit-modal-title').textContent = 'Отметить посещение';
     setStarDisplay(0);
     document.getElementById('issue-group').classList.add('hidden');
     document.getElementById('hasIssue').checked = false;
-
     openModal('visit-modal');
   }
 
@@ -501,30 +602,28 @@ const App = (() => {
     const form = e.target;
     const data = Object.fromEntries(new FormData(form).entries());
 
-    if (!data.rating) {
-      alert('Пожалуйста, поставьте оценку.');
-      return;
-    }
+    if (!data.rating) { alert('Пожалуйста, поставьте оценку.'); return; }
 
+    const user = Storage.getActiveUser();
     const visit = {
-      id: data.visitId || Storage.genId(),
-      date: Date.now(),
-      rating: parseInt(data.rating, 10),
-      review: (data.review || '').trim(),
-      issue: data.hasIssue ? (data.issue || '').trim() : null,
+      id:      data.visitId || Storage.genId(),
+      date:    Date.now(),
+      rating:  parseInt(data.rating, 10),
+      review:  (data.review || '').trim(),
+      issue:   data.hasIssue ? (data.issue || '').trim() : null,
+      user_id: user.id,
+      trip_id: null,
     };
 
     Storage.addVisit(data.wishId, visit);
     closeModal('visit-modal');
-    renderList();
-    MapModule.updateMarkerIcon(data.wishId);
-    if (currentView === 'route') renderRoutePanel();
+    if (currentView === 'places') renderPlacesList();
   }
 
-  // ===================== GEOCODING =====================
+  // ── Geocoding ─────────────────────────────────────────────────────────────────
 
   async function handleGeoSearch() {
-    const query = document.getElementById('location-search').value.trim();
+    const query    = document.getElementById('location-search').value.trim();
     if (!query) return;
     const resultsEl = document.getElementById('geocode-results');
     resultsEl.innerHTML = '<div class="geocode-result-item">Поиск...</div>';
@@ -535,13 +634,13 @@ const App = (() => {
         resultsEl.innerHTML = '<div class="geocode-result-item">Ничего не найдено</div>';
         return;
       }
-      resultsEl.innerHTML = results.map((r) =>
+      resultsEl.innerHTML = results.map(r =>
         `<div class="geocode-result-item" data-lat="${r.lat}" data-lng="${r.lon}" data-addr="${escHtml(r.display_name)}">${escHtml(r.display_name)}</div>`
       ).join('');
       resultsEl.querySelectorAll('.geocode-result-item[data-lat]').forEach(el => {
         el.addEventListener('click', () => {
-          const lat = parseFloat(el.dataset.lat);
-          const lng = parseFloat(el.dataset.lng);
+          const lat  = parseFloat(el.dataset.lat);
+          const lng  = parseFloat(el.dataset.lng);
           const addr = el.dataset.addr;
           locationPickResult = { lat, lng, address: addr };
           updateLocationDisplay(locationPickResult);
@@ -555,274 +654,204 @@ const App = (() => {
     }
   }
 
-  async function addToMyList(itemId) {
-    const sourceListId = typeof Auth !== 'undefined' ? Auth.currentListId() : null;
-    if (!sourceListId) return;
+  // ── User switcher ─────────────────────────────────────────────────────────────
 
-    if (typeof Auth !== 'undefined' && Auth.isAnon()) {
-      sessionStorage.setItem('_pendingAddToList', JSON.stringify({ itemId, sourceListId }));
-      await Auth.showLoginModal();
-      return; // page reloads after login
-    }
-
-    try {
-      const res = await fetch('api/wishes.php?action=copy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ source_id: itemId, source_list_id: sourceListId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Ошибка');
-      showSettingsStatus('Добавлено в ваш список!', 'ok');
-    } catch (e) {
-      showSettingsStatus(e.message, 'error');
-    }
+  function switchUser() {
+    const current = Storage.getActiveUser();
+    const nextId  = current.id === 'alice' ? 'bob' : 'alice';
+    Storage.setActiveUser(nextId);
+    const next = Storage.getActiveUser();
+    // Update FAB
+    const fab = document.getElementById('user-fab-avatar');
+    if (fab) fab.textContent = next.avatar;
+    // Toast
+    showToast(`Вы вошли как ${next.name} ${next.avatar}`);
+    // Re-render
+    if (currentView === 'places') renderPlacesList();
+    if (currentView === 'templates' && typeof TemplatesModule !== 'undefined') TemplatesModule.renderTemplatesList();
+    if (currentView === 'trips'     && typeof TripsModule     !== 'undefined') TripsModule.renderTripsList();
   }
 
-  function addToRouteFromList(id, btn) {
-    MapModule.toggleRouteSelect(id);
-    const inRoute = MapModule.getSelected().includes(id);
-    btn.classList.toggle('btn-card-route-active', inRoute);
-    btn.innerHTML = inRoute
-      ? `${icon('check', 'icon-sm')} В маршруте`
-      : `${icon('plus', 'icon-sm')} Маршрут`;
-    lucide.createIcons({ nodes: [btn] });
-    if (currentView === 'route') renderRoutePanel();
-  }
-
-  // ===================== ROUTE PANEL =====================
-
-  function renderRoutePanel() {
-    const routes = Storage.getAllRoutes();
-    const selected = MapModule.getSelected();
-    const activeId = MapModule.getActiveRouteId();
-
-    const isEmpty = routes.length === 0 && selected.length === 0;
-    document.getElementById('routes-all-empty').classList.toggle('hidden', !isEmpty);
-    document.getElementById('routes-has-content').classList.toggle('hidden', isEmpty);
-    updateRouteBadge(routes.length + selected.length);
-
-    if (isEmpty) {
-      document.getElementById('saved-route-info').textContent = '';
-      return;
+  function showIssuePopup(id) {
+    const item = Storage.getById(id);
+    if (!item) return;
+    const issue = Storage.latestIssue(item);
+    if (!issue) return;
+    clearTimeout(issuePopupTimer);
+    let popup = document.getElementById('issue-popup');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = 'issue-popup';
+      popup.className = 'issue-popup';
+      document.body.appendChild(popup);
     }
-
-    // --- Saved routes ---
-    const savedList = document.getElementById('saved-routes-list');
-    savedList.innerHTML = routes.map(r => {
-      const active = r.id === activeId;
-      const stops = r.placeNames ? r.placeNames.length : 0;
-      const stopWord = stops === 1 ? 'место' : stops < 5 ? 'места' : 'мест';
-      return `<div class="saved-route-item${active ? ' active' : ''}" onclick="App.loadSavedRoute('${r.id}')">
-        <div class="saved-route-icon">${icon('route', 'icon-lg')}</div>
-        <div class="saved-route-body">
-          <div class="saved-route-name">${escHtml(r.name)}</div>
-          <div class="saved-route-meta">${stops} ${stopWord}</div>
-        </div>
-        <button class="btn-remove-from-route" onclick="event.stopPropagation();App.deleteSavedRoute('${r.id}')" title="Удалить">${icon('x', 'icon-sm')}</button>
-      </div>`;
-    }).join('');
-
-    // --- Manual selection from map ---
-    const items = Storage.getAll();
-    const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
-    const manualSection = document.getElementById('manual-route-section');
-
-    if (selectedItems.length === 0) {
-      manualSection.classList.add('hidden');
-    } else {
-      manualSection.classList.remove('hidden');
-      document.getElementById('route-selected-list').innerHTML = selectedItems.map((item, i) => `
-        <div class="route-selected-item">
-          <div class="route-item-num">${i + 1}</div>
-          <div style="flex:1">
-            <div class="route-item-name">${escHtml(item.title)}</div>
-            ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
-          </div>
-          <button class="btn-remove-from-route" onclick="MapModule.removeFromRoute('${item.id}');App.renderRoutePanel();" title="Убрать">${icon('x', 'icon-sm')}</button>
-        </div>`).join('');
-    }
+    popup.innerHTML = `${icon('triangle-alert', 'icon-sm')} ${escHtml(issue)}`;
     icons();
+    popup.style.display = 'block';
+    issuePopupTimer = setTimeout(() => { popup.style.display = 'none'; }, 3500);
   }
 
-  function loadSavedRoute(id) {
-    const route = Storage.getRouteById(id);
-    if (!route) return;
-    MapModule.loadSavedRoute(route);
-    renderRoutePanel();
+  // ── Template/Trip delegators ──────────────────────────────────────────────────
+
+  function openTemplateEditor(id) {
+    if (typeof TemplatesModule !== 'undefined') TemplatesModule.openTemplateEditor(id);
   }
 
-  function deleteSavedRoute(id) {
-    Storage.removeRoute(id);
-    if (MapModule.getActiveRouteId() === id) MapModule.clearActiveRoute();
-    renderRoutePanel();
-  }
-
-  function updateRouteBadge(count) {
-    const badge = document.getElementById('route-badge');
-    if (count > 0) {
-      badge.textContent = count;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
-    }
-  }
-
-  // ===================== WALK MODE =====================
+  // ── Walk mode ─────────────────────────────────────────────────────────────────
 
   function haversine(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
+    const R  = 6371000;
+    const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
     const Δφ = (lat2 - lat1) * Math.PI / 180;
     const Δλ = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    const a  = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   function renderNearbyPanel(userLat, userLng) {
-    const locEl = document.getElementById('walk-locating');
-    const contentEl = document.getElementById('walk-content');
+    const locEl    = document.getElementById('walk-locating');
+    const contentEl= document.getElementById('walk-content');
     if (locEl) locEl.classList.add('hidden');
     if (contentEl) contentEl.classList.remove('hidden');
 
-    const placeTypeEmoji = placeTypeIcons; // reuse icon name map
+    // Metro detection (Moscow / SPb)
+    if (typeof findNearestMetroStation !== 'undefined') {
+      const nearest = findNearestMetroStation(userLat, userLng, 800);
+      renderMetroBanner(nearest);
+    }
 
-    const items = Storage.getAll().filter(i => i.location && (i.category === 'place' || i.category === 'experience'));
+    // Filter places with coordinates
+    const items = Storage.getAll().filter(i => {
+      const lat = i.coordinates ? i.coordinates.lat : (i.location && i.location.lat);
+      const lng = i.coordinates ? i.coordinates.lng : (i.location && i.location.lng);
+      return lat && lng;
+    });
 
-    const withDist = items.map(item => ({
-      ...item,
-      dist: haversine(userLat, userLng, item.location.lat, item.location.lng),
-    })).sort((a, b) => a.dist - b.dist);
+    const withDist = items.map(item => {
+      const lat = item.coordinates ? item.coordinates.lat : item.location.lat;
+      const lng = item.coordinates ? item.coordinates.lng : item.location.lng;
+      return { ...item, dist: haversine(userLat, userLng, lat, lng) };
+    })
+      .filter(i => i.dist <= walkRadiusMeters)
+      .sort((a, b) => a.dist - b.dist);
 
     const listEl = document.getElementById('walk-nearby-list');
     if (!listEl) return;
 
     if (withDist.length === 0) {
-      listEl.innerHTML = '<p class="walk-empty">В списке нет мест с адресом.<br>Добавьте места через «+».</p>';
+      listEl.innerHTML = '<p class="walk-empty">Мест в выбранном радиусе нет.</p>';
     } else {
       const walkSel = MapModule.getWalkSelected();
       listEl.innerHTML = withDist.map(item => {
-        const dist = item.dist;
-        const distStr = dist < 1000 ? `${Math.round(dist)} м` : `${(dist / 1000).toFixed(1)} км`;
+        const dist     = item.dist;
+        const distStr  = dist < 1000 ? `${Math.round(dist)} м` : `${(dist / 1000).toFixed(1)} км`;
         const walkMins = Math.round(dist / 83.3);
-        const timeStr = walkMins >= 60
-          ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин`
-          : `${walkMins} мин`;
-        const carMins = Math.round(dist / 666.7);  // 40 км/ч = 666.7 м/мин
-        const carTimeStr = carMins >= 60
-          ? `${Math.floor(carMins / 60)} ч ${carMins % 60} мин`
-          : `${carMins} мин`;
-        const taxiCost = Math.max(150, Math.round(carMins * (2000 / 60)));
-        const taxiStr = taxiCost >= 1000
-          ? `~${(taxiCost / 1000).toFixed(1).replace('.0', '')} тыс. ₽`
-          : `~${taxiCost} ₽`;
-        const typeIcon = item.category === 'experience'
-          ? icon('sparkles', 'icon-sm') : icon(placeTypeEmoji[item.placeType] || 'map-pin', 'icon-sm');
-        const inWalk = walkSel.includes(item.id);
-        const nearTag = dist <= 500 ? '<span class="walk-near-tag">Рядом</span>' : '';
+        const timeStr  = walkMins >= 60
+          ? `${Math.floor(walkMins / 60)} ч ${walkMins % 60} мин` : `${walkMins} мин`;
+        const flags    = item.flags || [];
+        const flagsHtml = flagIconsHtml(flags);
+        const inWalk   = walkSel.includes(item.id);
+        const nearTag  = dist <= 500 ? '<span class="walk-near-tag">Рядом</span>' : '';
+        const typeIcon = icon(placeTypeIcons[item.type] || 'map-pin', 'icon-sm');
         return `<div class="walk-nearby-item${inWalk ? ' selected' : ''}" data-id="${item.id}">
-          <div class="walk-nearby-left">
-            <div class="walk-nearby-name">${typeIcon} ${escHtml(item.title)} ${nearTag}</div>
-            <div class="walk-nearby-dist">
-              ${icon('map-pin', 'meta-icon')} ${distStr}
-              · ${icon('footprints', 'meta-icon')} ~${timeStr}
-              · ${icon('car', 'meta-icon')} ~${carTimeStr}
-              · ${icon('wallet', 'meta-icon')} ${taxiStr}
+          <label class="walk-nearby-label">
+            <input type="checkbox" class="walk-nearby-check" ${inWalk ? 'checked' : ''} onchange="App.toggleWalkItem('${item.id}')">
+            <div class="walk-nearby-info">
+              <div class="walk-nearby-name">${typeIcon} ${escHtml(item.name || item.title || '')} ${nearTag}</div>
+              <div class="walk-nearby-meta">${distStr} · ~${timeStr} пешком ${flagsHtml}</div>
             </div>
-          </div>
-          <button class="walk-nearby-btn${inWalk ? ' active' : ''}" onclick="App.toggleWalkItem('${item.id}')">
-            ${inWalk ? icon('check') : icon('plus')}
-          </button>
+          </label>
         </div>`;
       }).join('');
       icons();
     }
 
-    renderWalkRouteSection();
+    renderWalkRoutePanel();
   }
 
-  function renderWalkRouteSection() {
-    const selected = MapModule.getWalkSelected();
-    const routeSection = document.getElementById('walk-route-section');
-    const routePlaces = document.getElementById('walk-route-places');
-    if (!routeSection || !routePlaces) return;
-
-    if (selected.length === 0) {
-      routeSection.classList.add('hidden');
+  function renderMetroBanner(station) {
+    const bannerEl = document.getElementById('walk-metro-banner');
+    if (!bannerEl) return;
+    if (!station) {
+      bannerEl.classList.add('hidden');
       return;
     }
+    bannerEl.classList.remove('hidden');
+    bannerEl.innerHTML = `
+      <div class="metro-banner-info">
+        <span class="metro-dot" style="background:${escHtml(station.line_color || '#888')}"></span>
+        <span>Ближайшее метро: <strong>${escHtml(station.name)}</strong> (${station.distance} м)</span>
+      </div>
+      <div class="metro-banner-btns">
+        <button class="btn-sm btn-ghost" onclick="App._walkOnFoot()">🚶 Пешком</button>
+        <button class="btn-sm btn-primary" onclick="App._walkFromMetro('${escHtml(station.name)}',${station.lat},${station.lng})">🚇 Маршрут от станции</button>
+      </div>`;
+  }
 
-    routeSection.classList.remove('hidden');
-    const items = Storage.getAll();
-    const selectedItems = selected.map(id => items.find(i => i.id === id)).filter(Boolean);
+  function _walkOnFoot() {
+    // Already showing foot mode — just close banner
+    const bannerEl = document.getElementById('walk-metro-banner');
+    if (bannerEl) bannerEl.classList.add('hidden');
+  }
 
-    routePlaces.innerHTML = selectedItems.map((item, i) => `
-      <div class="route-selected-item">
-        <div class="route-item-num">${i + 1}</div>
-        <div style="flex:1">
-          <div class="route-item-name">${escHtml(item.title)}</div>
-          ${item.location ? `<div class="route-item-addr">${escHtml(shortAddr(item.location.address))}</div>` : ''}
-        </div>
-        <button class="btn-remove-from-route" onclick="App.removeFromWalk('${item.id}')" title="Убрать">✕</button>
-      </div>`).join('');
+  function _walkFromMetro(stationName, lat, lng) {
+    window.open(`https://maps.google.com/?saddr=current+location&daddr=${lat},${lng}&travelmode=transit`, '_blank');
+  }
+
+  function renderWalkRoutePanel() {
+    const selected    = MapModule.getWalkSelected();
+    const panelEl     = document.getElementById('walk-route-panel');
+    const countEl     = document.getElementById('walk-route-count');
+    if (!panelEl) return;
+    panelEl.classList.toggle('hidden', selected.length === 0);
+    if (countEl) countEl.textContent = `Выбрано: ${selected.length}`;
   }
 
   function buildAndSaveWalkRoute() {
     const walkSel = MapModule.getWalkSelected();
-    if (walkSel.length === 0) return;
+    if (!walkSel.length) return;
     const userLoc = MapModule.getUserLocation();
     if (!userLoc) return;
 
     const items = Storage.getAll();
-    const selectedItems = walkSel.map(id => items.find(i => i.id === id)).filter(i => i && i.location);
-    if (selectedItems.length === 0) return;
+    const selectedItems = walkSel
+      .map(id => items.find(i => i.id === id))
+      .filter(i => i && (i.coordinates || i.location));
+
+    if (!selectedItems.length) return;
+
+    const getCoords = i => i.coordinates || { lat: i.location.lat, lng: i.location.lng };
 
     const now = new Date();
-    const dateStr = now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-    const timeStr = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
     const route = {
-      id: Storage.genId(),
-      name: `Гуляем ${dateStr} ${timeStr}`,
-      createdAt: Date.now(),
+      id:          Storage.genId(),
+      name:        `Гуляем ${now.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`,
+      createdAt:   Date.now(),
       userLocation: userLoc,
-      placeIds: selectedItems.map(i => i.id),
-      placeNames: selectedItems.map(i => i.title),
-      waypoints: [
+      placeIds:    selectedItems.map(i => i.id),
+      placeNames:  selectedItems.map(i => i.name || i.title || ''),
+      waypoints:   [
         { lat: userLoc.lat, lng: userLoc.lng },
-        ...selectedItems.map(i => ({ lat: i.location.lat, lng: i.location.lng })),
+        ...selectedItems.map(i => getCoords(i)),
       ],
     };
 
     Storage.saveRoute(route);
     MapModule.clearWalkSelection();
     MapModule.clearWalkRoute();
-
-    switchView('route');
-    setTimeout(() => {
-      MapModule.loadSavedRoute(route);
-      renderRoutePanel();
-    }, 150);
+    renderWalkRoutePanel();
+    MapModule.loadSavedRoute(route);
+    MapModule.buildRoute(Storage.getAll());
   }
 
   function toggleWalkItem(id) {
     MapModule.toggleWalkSelect(id);
     const loc = MapModule.getUserLocation();
     if (loc) renderNearbyPanel(loc.lat, loc.lng);
-    else renderWalkRouteSection();
+    else renderWalkRoutePanel();
   }
 
-  function removeFromWalk(id) {
-    MapModule.removeWalkItem(id);
-    MapModule.clearWalkRoute();
-    const loc = MapModule.getUserLocation();
-    if (loc) renderNearbyPanel(loc.lat, loc.lng);
-    else renderWalkRouteSection();
-  }
-
-  // ===================== WALK ADD =====================
+  // ── Walk add ──────────────────────────────────────────────────────────────────
 
   let walkAddRating = 0;
   let walkAddLocation = null;
@@ -878,45 +907,61 @@ const App = (() => {
       document.getElementById('walk-add-title').focus();
       return;
     }
-    const placeType = document.getElementById('walk-add-place-type').value;
+    const placeType   = document.getElementById('walk-add-place-type').value;
     const description = document.getElementById('walk-add-desc').value.trim();
-    const review = document.getElementById('walk-add-review').value.trim();
+    const review      = document.getElementById('walk-add-review').value.trim();
+    const user        = Storage.getActiveUser();
+    const loc         = walkAddLocation || null;
 
     const item = {
-      id: Storage.genId(),
-      category: 'place',
+      id:          Storage.genId(),
+      category:    'place',
       title,
+      name:        title,
       description,
+      comment:     description,
+      type:        placeType,
       placeType,
-      location: walkAddLocation || null,
-      priority: 2,
-      createdAt: new Date().toISOString(),
+      location:    loc,
+      coordinates: loc ? { lat: loc.lat, lng: loc.lng } : null,
+      address:     loc ? loc.address : '',
+      priority:    2,
+      status:      'visited',
+      flags:       [],
+      metro_stations: [],
+      added_by:    user.id,
+      createdAt:   new Date().toISOString(),
+      _migrated_v2: true,
     };
     Storage.save(item);
 
     if (walkAddRating > 0 || review) {
       Storage.addVisit(item.id, {
-        id: Storage.genId(),
-        date: Date.now(),
-        rating: walkAddRating || null,
+        id:      Storage.genId(),
+        date:    Date.now(),
+        rating:  walkAddRating || null,
         review,
-        issue: null,
+        issue:   null,
+        user_id: user.id,
+        trip_id: null,
       });
     }
 
     closeModal('walk-add-modal');
-    renderList(); // also calls MapModule.renderMarkers internally
-    const loc = MapModule.getUserLocation();
-    if (loc) renderNearbyPanel(loc.lat, loc.lng);
-
-    showWalkToast('Место добавлено');
+    if (currentView === 'places') renderPlacesList();
+    MapModule.renderWalkMarkers(Storage.getAll());
+    const mapLoc = MapModule.getUserLocation();
+    if (mapLoc) renderNearbyPanel(mapLoc.lat, mapLoc.lng);
+    showToast('Место добавлено');
   }
 
-  function showWalkToast(msg) {
-    let el = document.getElementById('walk-toast');
+  // ── Toast ─────────────────────────────────────────────────────────────────────
+
+  function showToast(msg) {
+    let el = document.getElementById('app-toast');
     if (!el) {
       el = document.createElement('div');
-      el.id = 'walk-toast';
+      el.id = 'app-toast';
       el.className = 'walk-toast';
       document.body.appendChild(el);
     }
@@ -925,7 +970,7 @@ const App = (() => {
     setTimeout(() => el.classList.remove('show'), 2200);
   }
 
-  // ===================== THEME =====================
+  // ── Theme ─────────────────────────────────────────────────────────────────────
 
   function applyTheme(dark) {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -940,7 +985,7 @@ const App = (() => {
     applyTheme(saved ? saved === 'dark' : prefersDark);
   }
 
-  // ===================== SETTINGS =====================
+  // ── Settings ──────────────────────────────────────────────────────────────────
 
   function openSettingsModal() {
     document.getElementById('settings-status').classList.add('hidden');
@@ -949,16 +994,18 @@ const App = (() => {
 
   function exportData() {
     const data = {
-      version: 1,
+      version:    2,
       exportedAt: new Date().toISOString(),
-      items:  Storage.getAll(),
-      routes: Storage.getAllRoutes(),
+      items:      Storage.getAll(),
+      routes:     Storage.getAllRoutes(),
+      templates:  Storage.getAllTemplates(),
+      trips:      Storage.getAllTrips(),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `wishlist_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `planer_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showSettingsStatus('Файл сохранён', 'success');
@@ -970,60 +1017,92 @@ const App = (() => {
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        if (!data.items || !Array.isArray(data.items)) throw new Error('bad format');
-        const itemCount = data.items.length;
-        const routeCount = (data.routes || []).length;
-        const msg = `Найдено: ${itemCount} мест${routeCount ? ` и ${routeCount} маршрутов` : ''}.\nТекущие данные будут заменены. Продолжить?`;
+        const items  = data.items  || (Array.isArray(data) ? data : []);
+        const routes = data.routes || [];
+        const msg = `Найдено: ${items.length} мест${routes.length ? ` и ${routes.length} маршрутов` : ''}.\nТекущие данные будут заменены. Продолжить?`;
         if (!confirm(msg)) return;
-        Storage.importAll(data.items, data.routes || []);
+        Storage.importAll(data.version === 2 ? data : items, routes);
         closeModal('settings-modal');
-        renderList();
-        renderFilteredMarkers();
-        if (currentView === 'route') renderRoutePanel();
-        if (currentView === 'walk') MapModule.renderWalkMarkers(mapItems);
-        showSettingsStatus(`Загружено: ${itemCount} мест`, 'success');
+        renderPlacesList();
+        showSettingsStatus(`Загружено: ${items.length} мест`, 'success');
       } catch {
         showSettingsStatus('Ошибка: неверный формат файла', 'error');
       }
     };
     reader.readAsText(file);
-    // reset so same file can be re-selected
     document.getElementById('input-import').value = '';
   }
 
   function clearAllData() {
     if (!confirm('Удалить ВСЕ данные? Это действие нельзя отменить.')) return;
-    Object.keys(localStorage).filter(k => k.startsWith('wishlist_')).forEach(k => localStorage.removeItem(k));
-    MapModule.clearRouteSelection();
-    MapModule.clearWalkSelection();
-    MapModule.clearActiveRoute();
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('wishlist_') || k.startsWith('tripplan_'))
+      .forEach(k => localStorage.removeItem(k));
+    MapModule.clearWalkSelection && MapModule.clearWalkSelection();
+    MapModule.clearActiveRoute  && MapModule.clearActiveRoute();
     closeModal('settings-modal');
-    renderList();
-    MapModule.renderMarkers([]);
-    if (currentView === 'route') renderRoutePanel();
+    renderPlacesList();
+    MapModule.renderWalkMarkers([]);
   }
 
   function showSettingsStatus(msg, type) {
     const el = document.getElementById('settings-status');
     if (!el) return;
-    el.textContent = msg;
-    el.className = `settings-status settings-status-${type}`;
+    el.textContent  = msg;
+    el.className    = `settings-status settings-status-${type}`;
     setTimeout(() => el.classList.add('hidden'), 3500);
   }
 
-  // ===================== UTILS =====================
-
-  function escHtml(str) {
-    return String(str || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  }
-
-  // ===================== INIT =====================
+  // ── Init & event bindings ─────────────────────────────────────────────────────
 
   function _initSync() {
-    // Map filter chips
-    document.querySelectorAll('.map-filter-chip').forEach(chip => {
-      chip.addEventListener('click', () => toggleMapFilter(chip.dataset.type));
+    // Nav
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
     });
+
+    // Status filter tabs
+    document.querySelectorAll('.status-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        placesStatusFilter = tab.dataset.status;
+        renderPlacesList();
+      });
+    });
+
+    // Type chips
+    document.querySelectorAll('.type-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.type-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        placesTypeFilter = chip.dataset.type;
+        renderPlacesList();
+      });
+    });
+
+    // Walk radius chips
+    document.querySelectorAll('.walk-radius-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.walk-radius-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        walkRadiusMeters = parseInt(chip.dataset.radius, 10);
+        const loc = MapModule.getUserLocation();
+        if (loc) renderNearbyPanel(loc.lat, loc.lng);
+      });
+    });
+
+    // Subtabs (trips)
+    document.querySelectorAll('.subtab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (typeof TripsModule !== 'undefined') TripsModule.setFilter(btn.dataset.subtab);
+      });
+    });
+
+    // Add button
+    document.getElementById('btn-add').addEventListener('click', openAddModal);
 
     // Settings
     document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
@@ -1034,27 +1113,49 @@ const App = (() => {
     document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
     document.getElementById('toggle-dark-mode').addEventListener('change', e => applyTheme(e.target.checked));
 
-    // Auth / sharing
-    document.getElementById('btn-logout')?.addEventListener('click', () => Auth.logout());
-    document.getElementById('btn-back-to-own')?.addEventListener('click', switchToOwnList);
-    document.getElementById('share-public-toggle')?.addEventListener('change', e => togglePublic(e.target.checked));
-    document.getElementById('btn-save-list-name')?.addEventListener('click', () => {
-      updateListName(document.getElementById('share-list-name')?.value || '');
+    // Auth (optional)
+    document.getElementById('btn-back-to-own')?.addEventListener('click', () => {
+      if (typeof Auth !== 'undefined' && Auth.resetViewingList) Auth.resetViewingList();
     });
-    document.getElementById('btn-send-invite')?.addEventListener('click', sendInvite);
-    document.getElementById('share-invite-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendInvite(); });
-
-    // Settings open — load share section
-    document.getElementById('btn-settings').addEventListener('click', () => {
-      openSettingsModal();
-      if (typeof Auth !== 'undefined' && Auth.isAuthed()) openShareSettings();
+    document.getElementById('btn-logout')?.addEventListener('click', () => {
+      if (typeof Auth !== 'undefined') Auth.logout();
     });
 
-    // Discover search
-    let _searchTimer = null;
-    document.getElementById('discover-search-input')?.addEventListener('input', e => {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(() => searchDiscover(e.target.value), 400);
+    // Modal close
+    document.getElementById('btn-modal-close').addEventListener('click', () => closeModal('modal'));
+    document.getElementById('modal-overlay').addEventListener('click', () => closeModal('modal'));
+
+    // Place detail close
+    document.getElementById('btn-place-detail-close').addEventListener('click', () => closeModal('place-detail-modal'));
+    document.getElementById('place-detail-overlay').addEventListener('click', () => closeModal('place-detail-modal'));
+
+    // Visit modal
+    document.getElementById('btn-visit-close').addEventListener('click', () => closeModal('visit-modal'));
+    document.getElementById('visit-modal-overlay').addEventListener('click', () => closeModal('visit-modal'));
+    document.getElementById('visit-form').addEventListener('submit', handleVisitFormSubmit);
+    document.querySelectorAll('#star-input .star').forEach(btn => {
+      btn.addEventListener('click', () => setStarDisplay(parseInt(btn.dataset.value, 10)));
+    });
+    document.getElementById('hasIssue').addEventListener('change', function () {
+      document.getElementById('issue-group').classList.toggle('hidden', !this.checked);
+    });
+
+    // Wish form
+    document.getElementById('wish-form').addEventListener('submit', handleWishFormSubmit);
+    document.getElementById('btn-delete-wish').addEventListener('click', handleDeleteWish);
+
+    // Metro add button
+    document.getElementById('btn-add-metro').addEventListener('click', _addMetro);
+
+    // Location search
+    document.getElementById('btn-geo-search').addEventListener('click', handleGeoSearch);
+    document.getElementById('location-search').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); handleGeoSearch(); }
+    });
+    document.getElementById('btn-clear-location').addEventListener('click', () => {
+      locationPickResult = null;
+      updateLocationDisplay(null);
+      MapModule.clearLocationMarker();
     });
 
     // Walk add modal
@@ -1066,429 +1167,92 @@ const App = (() => {
     document.querySelectorAll('#walk-add-stars .star').forEach(btn =>
       btn.addEventListener('click', () => setWalkAddStars(parseInt(btn.dataset.value, 10))));
 
-    // Nav
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', () => switchView(btn.dataset.view));
-    });
-
-    // Add button
-    document.getElementById('btn-add').addEventListener('click', openAddModal);
-
-    // Filter tabs
-    document.querySelectorAll('.filter-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        currentFilter = tab.dataset.filter;
-        renderList();
-      });
-    });
-
-    // Modal close
-    document.getElementById('btn-modal-close').addEventListener('click', () => closeModal('modal'));
-    document.getElementById('modal-overlay').addEventListener('click', () => closeModal('modal'));
-
-    // Visit modal close
-    document.getElementById('btn-visit-close').addEventListener('click', () => closeModal('visit-modal'));
-    document.getElementById('visit-modal-overlay').addEventListener('click', () => closeModal('visit-modal'));
-
-    // Wish form
-    document.getElementById('wish-form').addEventListener('submit', handleWishFormSubmit);
-    document.getElementById('btn-delete-wish').addEventListener('click', handleDeleteWish);
-
-    // Category tabs
-    document.querySelectorAll('.cat-tab').forEach(btn => {
-      btn.addEventListener('click', () => selectCategory(btn.dataset.cat));
-    });
-
-    // Location search
-    document.getElementById('btn-geo-search').addEventListener('click', handleGeoSearch);
-    document.getElementById('location-search').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); handleGeoSearch(); }
-    });
-
-    // Clear location
-    document.getElementById('btn-clear-location').addEventListener('click', () => {
-      locationPickResult = null;
-      updateLocationDisplay(null);
-      MapModule.clearLocationMarker();
-    });
-
-    // Visit form
-    document.getElementById('visit-form').addEventListener('submit', handleVisitFormSubmit);
-
-    // Star input
-    document.querySelectorAll('#star-input .star').forEach(btn => {
-      btn.addEventListener('click', () => setStarDisplay(parseInt(btn.dataset.value, 10)));
-    });
-
-    // Issue checkbox
-    document.getElementById('hasIssue').addEventListener('change', function () {
-      document.getElementById('issue-group').classList.toggle('hidden', !this.checked);
-    });
-
-    // Route buttons
-    document.getElementById('btn-build-route').addEventListener('click', () => {
-      MapModule.initRouteMap();
-      MapModule.buildRoute(Storage.getAll());
-    });
-    document.getElementById('btn-google-maps').addEventListener('click', () => {
-      const url = MapModule.getGoogleMapsUrl();
-      if (url) window.open(url, '_blank');
-    });
-    document.getElementById('btn-clear-route').addEventListener('click', () => {
-      MapModule.clearRouteSelection();
-      MapModule.clearRoute();
-      renderRoutePanel();
-    });
-
-    // Walk buttons
+    // Walk route panel
     document.getElementById('btn-walk-build').addEventListener('click', buildAndSaveWalkRoute);
     document.getElementById('btn-walk-clear').addEventListener('click', () => {
       MapModule.clearWalkSelection();
-      MapModule.clearWalkRoute();
+      MapModule.clearWalkRoute && MapModule.clearWalkRoute();
       const loc = MapModule.getUserLocation();
       if (loc) renderNearbyPanel(loc.lat, loc.lng);
-      else renderWalkRouteSection();
-    });
-
-    // Map route selection callback
-    MapModule.setOnRouteChange((selected) => {
-      updateRouteBadge(selected.length);
-      if (currentView === 'route') renderRoutePanel();
+      else renderWalkRoutePanel();
     });
 
     // Walk selection callback
-    MapModule.setOnWalkSelectionChange(() => {
+    MapModule.setOnWalkSelectionChange && MapModule.setOnWalkSelectionChange(() => {
       if (currentView === 'walk') {
         const loc = MapModule.getUserLocation();
         if (loc) renderNearbyPanel(loc.lat, loc.lng);
-        else renderWalkRouteSection();
+        else renderWalkRoutePanel();
       }
     });
 
-    // Init maps lazily
+    // Location map callback
     MapModule.initLocationMap((lat, lng, address) => {
       locationPickResult = { lat, lng, address };
       updateLocationDisplay(locationPickResult);
     });
 
-    // Hide map hint after 4s
-    setTimeout(() => {
-      const hint = document.getElementById('map-hint');
-      if (hint) hint.classList.add('hidden');
-    }, 4000);
-
     // Theme
     initTheme();
+
+    // User FAB initial state
+    const fab = document.getElementById('user-fab-avatar');
+    if (fab) fab.textContent = Storage.getActiveUser().avatar;
   }
-
-  // ===================== AUTH / MULTI-USER =====================
-
-  function _isReadOnly() {
-    if (typeof Auth === 'undefined') return false;
-    if (Auth.isAnon()) return true;
-    return Auth.isAuthed() && !Auth.isViewingOwn();
-  }
-
-  function updateTopbarContext() {
-    const btnBack = document.getElementById('btn-back-to-own');
-    const btnAdd  = document.getElementById('btn-add');
-    const label   = document.getElementById('viewing-as-label');
-    const user    = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-
-    if (btnBack) btnBack.classList.toggle('hidden', !user || Auth.isViewingOwn());
-    if (btnAdd)  btnAdd.classList.toggle('hidden',  _isReadOnly());
-    if (label) {
-      label.textContent = (_isReadOnly() && user) ? `Чужой список` : '';
-      label.classList.toggle('hidden', !_isReadOnly());
-    }
-  }
-
-  async function switchToList(listId) {
-    if (typeof Auth !== 'undefined') Auth.setViewingList(listId);
-    await Storage.setListId(listId);
-    if (typeof Auth !== 'undefined' && (Auth.isAuthed() || Auth.isAnon())) updateTopbarContext();
-    switchView('list');
-    renderList();
-    icons();
-  }
-
-  async function switchToOwnList() {
-    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    if (!user) return;
-    Auth.resetViewingList();
-    await Storage.setListId(user.list_id);
-    updateTopbarContext();
-    renderList();
-    icons();
-  }
-
-  // ── Discover ──────────────────────────────────────────────────────────────
-
-  async function renderDiscover() {
-    if (typeof Auth === 'undefined') return;
-    const subSection = document.getElementById('discover-subscriptions-section');
-    const subEl = document.getElementById('discover-subscriptions-list');
-    // Subscriptions only for authenticated users
-    if (subSection) subSection.classList.toggle('hidden', !Auth.isAuthed());
-    if (!Auth.isAuthed() || !subEl) return;
-    try {
-      const res  = await fetch('api/lists.php?action=subscriptions', { credentials: 'include' });
-      const subs = await res.json();
-      subEl.innerHTML = subs.length === 0
-        ? '<p class="discover-empty">Нет подписок</p>'
-        : subs.map(_listCardHtml).join('');
-      icons();
-    } catch { subEl.innerHTML = '<p class="discover-empty">Ошибка загрузки</p>'; }
-  }
-
-  async function searchDiscover(q) {
-    const container = document.getElementById('discover-results');
-    if (!container) return;
-    if (!q.trim()) { container.innerHTML = ''; return; }
-    container.innerHTML = '<p class="discover-empty">Поиск…</p>';
-    try {
-      const res   = await fetch(`api/lists.php?action=search&q=${encodeURIComponent(q)}`, { credentials: 'include' });
-      const lists = await res.json();
-      container.innerHTML = lists.length === 0
-        ? '<p class="discover-empty">Ничего не найдено</p>'
-        : lists.map(_listCardHtml).join('');
-      icons();
-    } catch { container.innerHTML = '<p class="discover-empty">Ошибка поиска</p>'; }
-  }
-
-  function _listCardHtml(list) {
-    const authed = typeof Auth !== 'undefined' && Auth.isAuthed();
-    const subBtn = !authed ? '' : +list.is_subscribed
-      ? `<button class="btn-secondary btn-sm" onclick="App.unsubscribeList('${list.id}')">Отписаться</button>`
-      : `<button class="btn-primary btn-sm" onclick="App.subscribeList('${list.id}')">Подписаться</button>`;
-    return `<div class="list-card">
-      <div class="list-card-info" onclick="App.switchToList('${list.id}')">
-        <div class="list-card-title">${escHtml(list.name)}</div>
-        <div class="list-card-meta">${escHtml(list.username)} · ${list.wish_count} желаний${list.subscriber_count ? ` · ${list.subscriber_count} подписчиков` : ''}</div>
-      </div>
-      ${subBtn}
-    </div>`;
-  }
-
-  async function subscribeList(listId) {
-    try {
-      const res  = await fetch('api/lists.php?action=subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: listId }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      renderDiscover();
-    } catch (e) { showSettingsStatus(e.message, 'error'); }
-  }
-
-  async function unsubscribeList(listId) {
-    await fetch('api/lists.php?action=unsubscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: listId }) }).catch(() => {});
-    renderDiscover();
-  }
-
-  // ── Share settings ────────────────────────────────────────────────────────
-
-  async function openShareSettings() {
-    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    if (!user) return;
-    try {
-      const res  = await fetch(`api/lists.php?action=info&id=${encodeURIComponent(user.list_id)}`, { credentials: 'include' });
-      const info = await res.json();
-      const tog  = document.getElementById('share-public-toggle');
-      if (tog) tog.checked = !!+info.is_public;
-      const nameEl = document.getElementById('share-list-name');
-      if (nameEl) nameEl.value = info.name || '';
-    } catch {}
-    await Promise.all([_refreshMembers(user.list_id), _refreshInvites(user.list_id)]);
-    await loadIncomingInvites();
-  }
-
-  async function _refreshMembers(listId) {
-    const el = document.getElementById('share-members-list');
-    if (!el) return;
-    try {
-      const res     = await fetch(`api/lists.php?action=members&id=${encodeURIComponent(listId)}`, { credentials: 'include' });
-      const members = await res.json();
-      el.innerHTML  = members.length === 0
-        ? '<p class="settings-hint">Редакторов пока нет</p>'
-        : members.map(m => `<div class="share-member-row"><span>${escHtml(m.username)}</span><button class="btn-danger btn-sm" onclick="App.removeMember('${listId}','${m.id}')">Убрать</button></div>`).join('');
-    } catch {}
-  }
-
-  async function _refreshInvites(listId) {
-    const el = document.getElementById('share-invites-list');
-    if (!el) return;
-    try {
-      const res     = await fetch(`api/invites.php?action=outgoing&list_id=${encodeURIComponent(listId)}`, { credentials: 'include' });
-      const invites = await res.json();
-      el.innerHTML  = invites.length === 0
-        ? '<p class="settings-hint">Нет исходящих приглашений</p>'
-        : invites.map(i => `<div class="share-member-row"><span>${escHtml(i.invited_username)} <small class="text-muted">(ожидает)</small></span><button class="btn-secondary btn-sm" onclick="App.revokeInvite('${i.id}')">Отозвать</button></div>`).join('');
-    } catch {}
-  }
-
-  async function sendInvite() {
-    const user  = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    const input = document.getElementById('share-invite-input');
-    const uname = input?.value.trim();
-    if (!user || !uname) return;
-    try {
-      const res  = await fetch('api/invites.php?action=send', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_id: user.list_id, username: uname }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      if (input) input.value = '';
-      await _refreshInvites(user.list_id);
-      showSettingsStatus('Приглашение отправлено', 'success');
-    } catch (e) { showSettingsStatus(e.message, 'error'); }
-  }
-
-  async function removeMember(listId, userId) {
-    if (!confirm('Убрать этого редактора?')) return;
-    await fetch('api/lists.php?action=remove_member', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ list_id: listId, user_id: userId }) }).catch(() => {});
-    await _refreshMembers(listId);
-  }
-
-  async function revokeInvite(inviteId) {
-    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    if (!user) return;
-    await fetch(`api/invites.php?action=revoke&id=${encodeURIComponent(inviteId)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
-    await _refreshInvites(user.list_id);
-  }
-
-  async function togglePublic(isPublic) {
-    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    if (!user) return;
-    try {
-      await fetch('api/lists.php?action=update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.list_id, is_public: isPublic }) });
-      showSettingsStatus(isPublic ? 'Список стал публичным' : 'Список скрыт', 'success');
-    } catch {}
-  }
-
-  async function updateListName(name) {
-    const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
-    if (!user || !name.trim()) return;
-    try {
-      await fetch('api/lists.php?action=update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: user.list_id, name }) });
-      showSettingsStatus('Название обновлено', 'success');
-    } catch {}
-  }
-
-  // ── Incoming invites ──────────────────────────────────────────────────────
-
-  async function loadIncomingInvites() {
-    const el = document.getElementById('incoming-invites-list');
-    if (!el) return;
-    try {
-      const res     = await fetch('api/invites.php?action=incoming', { credentials: 'include' });
-      if (!res.ok) return;
-      const invites = await res.json();
-      const badge   = document.getElementById('invites-badge');
-      if (badge) { badge.textContent = invites.length; badge.classList.toggle('hidden', invites.length === 0); }
-      el.innerHTML = invites.length === 0 ? '' : invites.map(i => `
-        <div class="invite-row">
-          <div class="invite-info"><strong>${escHtml(i.list_name)}</strong><small> от ${escHtml(i.invited_by_username)}</small></div>
-          <div class="invite-actions">
-            <button class="btn-primary btn-sm" onclick="App.acceptInvite('${i.id}')">Принять</button>
-            <button class="btn-secondary btn-sm" onclick="App.declineInvite('${i.id}')">Отклонить</button>
-          </div>
-        </div>`).join('');
-    } catch {}
-  }
-
-  async function acceptInvite(inviteId) {
-    try {
-      const res  = await fetch('api/invites.php?action=accept', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inviteId }) });
-      const data = await res.json();
-      await loadIncomingInvites();
-      showSettingsStatus(`Вы редактор списка «${data.list?.name || ''}»`, 'success');
-    } catch {}
-  }
-
-  async function declineInvite(inviteId) {
-    await fetch('api/invites.php?action=decline', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inviteId }) }).catch(() => {});
-    await loadIncomingInvites();
-  }
-
-  // ===================== INIT =====================
 
   async function init() {
-    if (typeof Auth !== 'undefined') Auth.initUI();
-    _initSync();
+    initTheme();
 
-    let user = null;
+    // Try auth but don't block on failure
     if (typeof Auth !== 'undefined') {
-      user = await Auth.init();   // shows login modal if needed, waits for login
-    }
-
-    const isAnon = typeof Auth !== 'undefined' && Auth.isAnon();
-    const listId = user ? user.list_id : null;
-    await Storage.init(listId);
-
-    if (user) {
-      // Check for pending "add to my list" action (set before login from anon state)
-      const pendingRaw = sessionStorage.getItem('_pendingAddToList');
-      if (pendingRaw) {
-        sessionStorage.removeItem('_pendingAddToList');
-        try {
-          const { itemId, sourceListId } = JSON.parse(pendingRaw);
-          await fetch('api/wishes.php?action=copy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ source_id: itemId, source_list_id: sourceListId }),
-          });
-          await Storage.init(listId); // reload own list to show copied item
-        } catch { /* ignore copy errors */ }
+      try {
+        Auth.initUI && Auth.initUI();
+        const user = await Auth.init();
+        const listId = user ? user.list_id : null;
+        await Storage.init(listId);
+      } catch (e) {
+        console.warn('[App] Auth/Storage init failed, using localStorage:', e);
+        await Storage.init(null);
       }
-      updateTopbarContext();
-      if (Auth.isAuthed()) loadIncomingInvites();
+    } else {
+      await Storage.init(null);
     }
 
-    if (isAnon) {
-      // Anon users: hide personal nav items, start on discover
-      document.querySelectorAll('[data-view="route"],[data-view="walk"]')
-        .forEach(el => el.classList.add('hidden'));
-      switchView('discover');
-    } else {
-      renderList();
-    }
+    _initSync();
+    renderPlacesList();
     icons();
   }
 
-  // Public
+  // ── Public API ────────────────────────────────────────────────────────────────
+
   return {
     init,
     switchView,
-    renderList,
-    renderRoutePanel,
+    renderPlacesList,
     openAddModal,
     openEditModal,
     openVisitModal,
+    openPlaceDetail,
     toggleVisits,
     showIssuePopup,
     toggleWalkItem,
-    removeFromWalk,
-    renderRoutePanel,
-    loadSavedRoute,
-    deleteSavedRoute,
     openWalkAddModal,
-    addToMyList,
-    addToRouteFromList,
-    // multi-user
-    switchToList,
-    switchToOwnList,
-    subscribeList,
-    unsubscribeList,
-    removeMember,
-    revokeInvite,
-    acceptInvite,
-    declineInvite,
+    switchUser,
+    openTemplateEditor,
+    closeModal,
+    // Exposed for metro editor (onclick attributes)
+    _updateMetro,
+    _removeMetro,
+    _walkOnFoot,
+    _walkFromMetro,
+    // Legacy compat (map.js calls)
+    renderList: renderPlacesList,
+    addToRouteFromList: () => {},
   };
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
-  MapModule.initMainMap();
-  MapModule.initRouteMap();
+  MapModule.initLocationMap && MapModule.initLocationMap(() => {});
   MapModule.initWalkMap();
   App.init();
 });

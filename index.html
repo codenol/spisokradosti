@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <title>Список желаний</title>
+  <title>Планер</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Желания">
+  <meta name="apple-mobile-web-app-title" content="Планер">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -26,105 +26,67 @@
     <header id="topbar">
       <div class="topbar-left">
         <button id="btn-back-to-own" class="btn-icon hidden" title="Вернуться к своему списку"><i data-lucide="arrow-left" class="icon icon-lg"></i></button>
-        <h1 id="view-title">Список желаний</h1>
+        <h1 id="view-title">Мои места</h1>
         <span id="viewing-as-label" class="viewing-as-label hidden"></span>
       </div>
       <div class="topbar-actions">
         <button id="btn-settings" class="btn-icon" title="Настройки"><i data-lucide="settings" class="icon icon-lg"></i></button>
-        <button id="btn-add" class="btn-fab" title="Добавить желание"><i data-lucide="plus" class="icon icon-xl"></i></button>
+        <button id="btn-add" class="btn-fab" title="Добавить место"><i data-lucide="plus" class="icon icon-xl"></i></button>
       </div>
     </header>
 
     <!-- Views -->
     <main id="main">
 
-      <!-- LIST VIEW -->
-      <section id="view-list" class="view active">
-        <div class="filter-tabs">
-          <button class="filter-tab active" data-filter="all">Все</button>
-          <button class="filter-tab" data-filter="place"><i data-lucide="map-pin" class="icon icon-sm"></i> Места</button>
-          <button class="filter-tab" data-filter="experience"><i data-lucide="sparkles" class="icon icon-sm"></i> Впечатления</button>
-          <button class="filter-tab" data-filter="material"><i data-lucide="gift" class="icon icon-sm"></i> Вещи</button>
+      <!-- PLACES VIEW (was view-list) -->
+      <section id="view-places" class="view active">
+        <!-- Status filter -->
+        <div class="status-filter-tabs">
+          <button class="status-tab active" data-status="all">Все</button>
+          <button class="status-tab" data-status="wishlist">Хочу</button>
+          <button class="status-tab" data-status="visited">Был</button>
+        </div>
+        <!-- Type chip scroll -->
+        <div class="type-chips" id="type-chips">
+          <button class="type-chip active" data-type="all">Все типы</button>
+          <button class="type-chip" data-type="museum"><i data-lucide="landmark" class="icon icon-sm"></i> Музей</button>
+          <button class="type-chip" data-type="cafe"><i data-lucide="coffee" class="icon icon-sm"></i> Кафе</button>
+          <button class="type-chip" data-type="restaurant"><i data-lucide="utensils" class="icon icon-sm"></i> Ресторан</button>
+          <button class="type-chip" data-type="park"><i data-lucide="tree-pine" class="icon icon-sm"></i> Парк</button>
+          <button class="type-chip" data-type="hotel"><i data-lucide="hotel" class="icon icon-sm"></i> Отель</button>
+          <button class="type-chip" data-type="other"><i data-lucide="map-pin" class="icon icon-sm"></i> Другое</button>
         </div>
         <div id="wish-list" class="wish-list">
           <!-- cards rendered by JS -->
         </div>
         <div id="empty-state" class="empty-state hidden">
-          <div class="empty-icon"><i data-lucide="star" class="icon" style="width:48px;height:48px;opacity:.3"></i></div>
-          <p>Здесь пока пусто.<br>Добавьте первое желание!</p>
+          <div class="empty-icon"><i data-lucide="map-pin" class="icon" style="width:48px;height:48px;opacity:.3"></i></div>
+          <p>Здесь пока пусто.<br>Добавьте первое место!</p>
         </div>
       </section>
 
-      <!-- MAP VIEW -->
-      <section id="view-map" class="view">
-        <div id="main-map"></div>
-        <div id="map-hint" class="map-hint">Нажмите на маркер, чтобы добавить место в маршрут</div>
-        <div id="map-filter-bar" class="map-filter-bar">
-          <button class="map-filter-chip active" data-type="all">Все</button>
-          <button class="map-filter-chip" data-type="museum"><i data-lucide="landmark" class="icon icon-sm"></i> Музеи</button>
-          <button class="map-filter-chip" data-type="mansion"><i data-lucide="castle" class="icon icon-sm"></i> Особняки</button>
-          <button class="map-filter-chip" data-type="restaurant"><i data-lucide="utensils" class="icon icon-sm"></i> Рестораны</button>
-          <button class="map-filter-chip" data-type="cafe"><i data-lucide="coffee" class="icon icon-sm"></i> Кафе</button>
-          <button class="map-filter-chip" data-type="park"><i data-lucide="tree-pine" class="icon icon-sm"></i> Парки</button>
-          <button class="map-filter-chip" data-type="shop"><i data-lucide="shopping-bag" class="icon icon-sm"></i> Магазины</button>
-          <button class="map-filter-chip" data-type="experience"><i data-lucide="sparkles" class="icon icon-sm"></i> Впечатления</button>
-          <button class="map-filter-chip" data-type="other"><i data-lucide="map-pin" class="icon icon-sm"></i> Другое</button>
+      <!-- TEMPLATES VIEW -->
+      <section id="view-templates" class="view">
+        <div id="templates-list" class="templates-list"></div>
+        <div id="templates-empty" class="empty-state hidden">
+          <div class="empty-icon"><i data-lucide="route" class="icon" style="width:48px;height:48px;opacity:.3"></i></div>
+          <p>Шаблонов пока нет.<br>Создайте первый маршрут!</p>
+          <button class="btn-primary" onclick="App.openTemplateEditor()">+ Создать шаблон</button>
         </div>
       </section>
 
-      <!-- ROUTE VIEW -->
-      <section id="view-route" class="view">
-        <div id="route-map"></div>
-        <div id="route-panel" class="route-panel">
-
-          <!-- Empty state: no routes at all -->
-          <div id="routes-all-empty" class="routes-all-empty hidden">
-            <div class="routes-empty-icon"><i data-lucide="compass" class="icon" style="width:48px;height:48px;opacity:.3"></i></div>
-            <div class="routes-empty-title">Маршрутов пока нет</div>
-            <div class="routes-empty-subtitle">Создайте маршрут одним из способов:</div>
-            <div class="routes-onboarding">
-              <div class="routes-onboarding-card" onclick="App.switchView('walk')">
-                <div class="routes-onboarding-icon"><i data-lucide="footprints" class="icon" style="width:28px;height:28px"></i></div>
-                <div class="routes-onboarding-body">
-                  <div class="routes-onboarding-title">Режим «Гуляю»</div>
-                  <div class="routes-onboarding-desc">Откройте вкладку «Гуляю», выберите места рядом и нажмите «Построить маршрут»</div>
-                </div>
-                <span class="routes-onboarding-arrow">›</span>
-              </div>
-              <div class="routes-onboarding-card" onclick="App.switchView('map')">
-                <div class="routes-onboarding-icon"><i data-lucide="map" class="icon" style="width:28px;height:28px"></i></div>
-                <div class="routes-onboarding-body">
-                  <div class="routes-onboarding-title">С карты</div>
-                  <div class="routes-onboarding-desc">На карте нажмите на маркер → «+ В маршрут», затем выберите «Построить маршрут»</div>
-                </div>
-                <span class="routes-onboarding-arrow">›</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Has content -->
-          <div id="routes-has-content" class="hidden">
-
-            <!-- Saved routes list -->
-            <div id="saved-routes-section">
-              <div id="saved-routes-list" class="saved-routes-list"></div>
-              <div id="saved-route-info" class="route-info saved-route-info-bar"></div>
-            </div>
-
-            <!-- Manual selection from map (if any) -->
-            <div id="manual-route-section" class="hidden">
-              <div class="panel-section-label">Выбрано на карте</div>
-              <div id="route-selected-list" class="route-selected-list"></div>
-              <div id="route-actions" class="route-actions">
-                <div id="route-info" class="route-info"></div>
-                <button id="btn-build-route" class="btn-primary"><i data-lucide="route" class="icon"></i> Построить маршрут</button>
-                <button id="btn-google-maps" class="btn-secondary">Открыть в Google Maps</button>
-                <button id="btn-clear-route" class="btn-ghost">Очистить выбор</button>
-              </div>
-            </div>
-
-          </div>
-
+      <!-- TRIPS VIEW -->
+      <section id="view-trips" class="view">
+        <!-- Subtabs -->
+        <div class="subtabs">
+          <button class="subtab active" data-subtab="upcoming">Предстоящие</button>
+          <button class="subtab" data-subtab="past">Прошедшие</button>
+        </div>
+        <div id="trips-list" class="trips-list"></div>
+        <div id="trips-empty" class="empty-state hidden">
+          <div class="empty-icon"><i data-lucide="briefcase" class="icon" style="width:48px;height:48px;opacity:.3"></i></div>
+          <p>Поездок пока нет.</p>
+          <button class="btn-primary" onclick="TripsModule.openTripEditor()">+ Создать поездку</button>
         </div>
       </section>
 
@@ -137,25 +99,39 @@
             <p>Определяем местоположение…</p>
           </div>
           <div id="walk-content" class="hidden">
-            <div id="walk-route-section" class="walk-route-section hidden">
-              <div id="walk-route-places" class="walk-route-places"></div>
-              <div id="walk-route-info" class="route-info"></div>
-              <div class="walk-route-btns">
-                <button id="btn-walk-build" class="btn-primary btn-sm"><i data-lucide="route" class="icon"></i> Построить маршрут</button>
-                <button id="btn-walk-clear" class="btn-ghost btn-sm">Очистить</button>
-              </div>
+            <!-- Metro banner (shown when near metro) -->
+            <div id="walk-metro-banner" class="walk-metro-banner hidden"></div>
+            <!-- Radius selector -->
+            <div class="walk-radius-chips">
+              <span class="walk-radius-label">Радиус:</span>
+              <button class="walk-radius-chip" data-radius="500">500 м</button>
+              <button class="walk-radius-chip active" data-radius="2000">2 км</button>
+              <button class="walk-radius-chip" data-radius="5000">5 км</button>
             </div>
             <div class="walk-actions-bar">
               <span class="walk-nearby-header">Рядом с вами</span>
-              <button class="btn-walk-add-here" onclick="App.openWalkAddModal()"><i data-lucide="map-pin" class="icon icon-sm"></i> Я здесь, отметить место</button>
+              <button class="btn-walk-add-here" onclick="App.openWalkAddModal()"><i data-lucide="map-pin" class="icon icon-sm"></i> Я здесь</button>
             </div>
             <div id="walk-nearby-list" class="walk-nearby-list"></div>
+          </div>
+          <!-- Sticky route panel -->
+          <div id="walk-route-panel" class="walk-route-panel hidden">
+            <span id="walk-route-count">Выбрано: 0</span>
+            <div class="walk-route-actions">
+              <button id="btn-walk-build" class="btn-primary btn-sm"><i data-lucide="route" class="icon icon-sm"></i> Построить маршрут</button>
+              <button id="btn-walk-clear" class="btn-ghost btn-sm">Очистить</button>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- DISCOVER VIEW -->
-      <section id="view-discover" class="view">
+      <!-- MAP VIEW (hidden, kept for location picker + place detail mini-map) -->
+      <section id="view-map" class="view" style="display:none">
+        <div id="main-map"></div>
+      </section>
+
+      <!-- DISCOVER VIEW (hidden, kept for public lists) -->
+      <section id="view-discover" class="view" style="display:none">
         <div class="discover-search-bar">
           <i data-lucide="search" class="icon icon-sm"></i>
           <input id="discover-search-input" type="search" placeholder="Поиск публичных списков…" autocomplete="off">
@@ -169,33 +145,45 @@
 
     </main>
 
-    <!-- Bottom nav -->
+    <!-- User switcher FAB -->
+    <button id="user-fab" class="user-fab" title="Переключить пользователя" onclick="App.switchUser()">
+      <span id="user-fab-avatar">🧡</span>
+    </button>
+
+    <!-- Bottom nav (4 tabs) -->
     <nav id="bottom-nav">
-      <button class="nav-btn active" data-view="list">
-        <span class="nav-icon"><i data-lucide="list" class="icon"></i></span>
-        <span class="nav-label">Список</span>
+      <button class="nav-btn active" data-view="places">
+        <span class="nav-icon"><i data-lucide="map-pin" class="icon"></i></span>
+        <span class="nav-label">Места</span>
       </button>
-      <button class="nav-btn" data-view="map">
-        <span class="nav-icon"><i data-lucide="map" class="icon"></i></span>
-        <span class="nav-label">Карта</span>
+      <button class="nav-btn" data-view="templates">
+        <span class="nav-icon"><i data-lucide="route" class="icon"></i></span>
+        <span class="nav-label">Шаблоны</span>
       </button>
-      <button class="nav-btn" data-view="route">
-        <span class="nav-icon"><i data-lucide="compass" class="icon"></i></span>
-        <span class="nav-label">Маршруты</span>
-        <span id="route-badge" class="route-badge hidden">0</span>
+      <button class="nav-btn" data-view="trips">
+        <span class="nav-icon"><i data-lucide="briefcase" class="icon"></i></span>
+        <span class="nav-label">Поездки</span>
       </button>
       <button class="nav-btn" data-view="walk">
         <span class="nav-icon"><i data-lucide="footprints" class="icon"></i></span>
         <span class="nav-label">Гуляю</span>
       </button>
-      <button class="nav-btn" data-view="discover" id="btn-discover">
-        <span class="nav-icon" style="position:relative">
-          <i data-lucide="compass" class="icon"></i>
-          <span id="invites-badge" class="route-badge hidden" style="top:-4px;right:-4px">0</span>
-        </span>
-        <span class="nav-label">Найти</span>
-      </button>
     </nav>
+  </div>
+
+  <!-- PLACE DETAIL MODAL -->
+  <div id="place-detail-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-overlay" id="place-detail-overlay"></div>
+    <div class="modal-sheet modal-sheet-tall">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2 id="place-detail-title"></h2>
+        <button class="btn-close" id="btn-place-detail-close" aria-label="Закрыть"><i data-lucide="x" class="icon icon-lg"></i></button>
+      </div>
+      <div class="modal-body" id="place-detail-body">
+        <!-- rendered by JS -->
+      </div>
+    </div>
   </div>
 
   <!-- ADD/EDIT MODAL -->
@@ -204,76 +192,78 @@
     <div class="modal-sheet">
       <div class="modal-handle"></div>
       <div class="modal-header">
-        <h2 id="modal-title">Новое желание</h2>
+        <h2 id="modal-title">Новое место</h2>
         <button class="btn-close" id="btn-modal-close" aria-label="Закрыть"><i data-lucide="x" class="icon icon-lg"></i></button>
       </div>
       <div class="modal-body">
         <form id="wish-form" novalidate>
           <input type="hidden" name="id">
-
-          <!-- Category selector -->
-          <div class="category-tabs form-group">
-            <button type="button" class="cat-tab" data-cat="place"><i data-lucide="map-pin" class="icon icon-sm"></i> Место</button>
-            <button type="button" class="cat-tab" data-cat="experience"><i data-lucide="sparkles" class="icon icon-sm"></i> Впечатление</button>
-            <button type="button" class="cat-tab active" data-cat="material"><i data-lucide="gift" class="icon icon-sm"></i> Вещь</button>
-          </div>
-          <input type="hidden" name="category" value="material">
+          <input type="hidden" name="category" value="place">
 
           <div class="form-group">
             <input class="form-input" name="title" placeholder="Название *" required autocomplete="off">
           </div>
+
+          <!-- Type -->
           <div class="form-group">
-            <textarea class="form-input form-textarea" name="description" placeholder="Описание (опционально)" rows="2"></textarea>
+            <select class="form-input form-select" name="placeType">
+              <option value="museum">Музей</option>
+              <option value="cafe">Кафе</option>
+              <option value="restaurant">Ресторан</option>
+              <option value="park">Парк</option>
+              <option value="hotel">Отель</option>
+              <option value="other" selected>Другое</option>
+            </select>
           </div>
 
-          <!-- MATERIAL fields -->
-          <div class="fields-material form-fields">
-            <div class="form-group">
-              <input class="form-input" name="shopUrl" type="url" placeholder="Ссылка на магазин" autocomplete="off">
+          <!-- Comment -->
+          <div class="form-group">
+            <textarea class="form-input form-textarea" name="comment" placeholder="Комментарий (опционально)" rows="2"></textarea>
+          </div>
+
+          <!-- Price range -->
+          <div class="form-group">
+            <span class="form-label">Ценовой диапазон:</span>
+            <div class="price-range-options">
+              <label class="price-option">
+                <input type="radio" name="price_range" value="budget"> <span>₽ Бюджетно</span>
+              </label>
+              <label class="price-option">
+                <input type="radio" name="price_range" value="mid" checked> <span>₽₽ Средне</span>
+              </label>
+              <label class="price-option">
+                <input type="radio" name="price_range" value="expensive"> <span>₽₽₽ Дорого</span>
+              </label>
             </div>
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <input class="form-input" name="price" type="number" min="0" step="0.01" placeholder="Цена (₽)">
-              </div>
-            </div>
-            <div class="form-group">
-              <input class="form-input" name="imageUrl" type="url" placeholder="Ссылка на изображение" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <input class="form-input" name="price_note" placeholder="Примечание о ценах (напр. вход 500 ₽)">
+          </div>
+
+          <!-- Flags -->
+          <div class="form-group">
+            <span class="form-label">Флаги:</span>
+            <div class="flags-options">
+              <label class="flag-option"><input type="checkbox" name="flags" value="booking_required"> 📅 Нужна бронь</label>
+              <label class="flag-option"><input type="checkbox" name="flags" value="seasonal"> 🌿 Сезонное</label>
+              <label class="flag-option"><input type="checkbox" name="flags" value="crowded"> 👥 Бывает людно</label>
+              <label class="flag-option"><input type="checkbox" name="flags" value="closed"> ❌ Закрыто / изменилось</label>
+              <label class="flag-option"><input type="checkbox" name="flags" value="expensive"> 💸 Дороже ожиданий</label>
+              <label class="flag-option"><input type="checkbox" name="flags" value="note"> ℹ️ Нюанс</label>
             </div>
           </div>
 
-          <!-- PLACE fields -->
-          <div class="fields-place form-fields hidden">
-            <div class="form-group">
-              <select class="form-input form-select" name="placeType">
-                <option value="museum">Музей</option>
-                <option value="mansion">Особняк / Усадьба</option>
-                <option value="cafe">Кафе</option>
-                <option value="restaurant">Ресторан</option>
-                <option value="park">Парк</option>
-                <option value="shop">Магазин</option>
-                <option value="other">Другое</option>
-              </select>
+          <!-- Metro stations -->
+          <div class="form-group">
+            <div class="metro-section-header">
+              <span class="form-label">Станции метро</span>
+              <button type="button" class="btn-ghost-small" id="btn-add-metro">+ Добавить</button>
             </div>
-            <div class="form-group">
-              <input class="form-input" name="priceText" placeholder="Цены (напр. 200–500 ₽ или Бесплатно)">
-            </div>
-            <div class="form-group">
-              <input class="form-input" name="website" type="url" placeholder="Сайт">
-            </div>
+            <div id="metro-stations-list"></div>
           </div>
 
-          <!-- EXPERIENCE fields -->
-          <div class="fields-experience form-fields hidden">
-            <div class="form-group">
-              <input class="form-input" name="priceText" placeholder="Цены (опционально)">
-            </div>
-            <div class="form-group">
-              <input class="form-input" name="website" type="url" placeholder="Сайт (опционально)">
-            </div>
-          </div>
-
-          <!-- LOCATION (place=required, experience=optional) -->
-          <div id="location-section" class="form-group hidden">
+          <!-- Location -->
+          <div id="location-section" class="form-group">
             <div class="location-search-wrap">
               <input class="form-input" id="location-search" placeholder="Поиск адреса..." autocomplete="off">
               <button type="button" id="btn-geo-search" class="btn-search"><i data-lucide="search" class="icon"></i></button>
@@ -377,15 +367,12 @@
         <button class="btn-close" id="btn-walk-add-close" aria-label="Закрыть"><i data-lucide="x" class="icon icon-lg"></i></button>
       </div>
 
-      <!-- Tabs -->
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="info">Основное</button>
         <button class="modal-tab" data-tab="rating">Оценка</button>
       </div>
 
       <div class="modal-body">
-
-        <!-- Tab: info -->
         <div id="walk-add-tab-info" class="modal-tab-content">
           <div class="form-group">
             <input class="form-input" id="walk-add-title" placeholder="Название *" autocomplete="off">
@@ -394,11 +381,10 @@
             <select class="form-input form-select" id="walk-add-place-type">
               <option value="other">Тип места</option>
               <option value="museum">Музей</option>
-              <option value="mansion">Особняк / Усадьба</option>
               <option value="cafe">Кафе</option>
               <option value="restaurant">Ресторан</option>
               <option value="park">Парк</option>
-              <option value="shop">Магазин</option>
+              <option value="hotel">Отель</option>
             </select>
           </div>
           <div class="form-group">
@@ -410,7 +396,6 @@
           </div>
         </div>
 
-        <!-- Tab: rating -->
         <div id="walk-add-tab-rating" class="modal-tab-content hidden">
           <div class="form-group">
             <label class="form-label">Оценка</label>
@@ -447,7 +432,6 @@
 
         <div class="settings-section">
           <div class="settings-section-title">Внешний вид</div>
-
           <div class="settings-item">
             <div class="settings-item-info">
               <div class="settings-item-name">Тёмная тема</div>
@@ -462,15 +446,13 @@
 
         <div class="settings-section">
           <div class="settings-section-title">Данные</div>
-
           <div class="settings-item">
             <div class="settings-item-info">
               <div class="settings-item-name">Экспорт базы данных</div>
-              <div class="settings-item-desc">Скачать все места и маршруты в файл JSON</div>
+              <div class="settings-item-desc">Скачать все места, шаблоны и поездки в файл JSON</div>
             </div>
             <button id="btn-export" class="btn-secondary btn-sm"><i data-lucide="download" class="icon icon-sm"></i> Скачать</button>
           </div>
-
           <div class="settings-item">
             <div class="settings-item-info">
               <div class="settings-item-name">Импорт базы данных</div>
@@ -483,75 +465,26 @@
           </div>
         </div>
 
-        <!-- Share section (visible only when authenticated) -->
-        <div class="settings-section" id="share-section">
-          <div class="settings-section-title">Доступ к списку</div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-name">Название списка</div>
-            </div>
-            <div class="share-name-row">
-              <input id="share-list-name" type="text" class="settings-input" placeholder="Мой список">
-              <button id="btn-save-list-name" class="btn-secondary btn-sm">Сохранить</button>
-            </div>
-          </div>
-
-          <div class="settings-item">
-            <div class="settings-item-info">
-              <div class="settings-item-name">Публичный список</div>
-              <div class="settings-item-desc">Другие пользователи смогут найти и подписаться</div>
-            </div>
-            <label class="settings-toggle">
-              <input type="checkbox" id="share-public-toggle">
-              <span class="settings-toggle-track"><span class="settings-toggle-thumb"></span></span>
-            </label>
-          </div>
-
-          <div class="settings-sub-title">Редакторы</div>
-          <div id="share-members-list" class="share-list"></div>
-
-          <div class="settings-sub-title">Пригласить редактора</div>
-          <div class="share-invite-row">
-            <input id="share-invite-input" type="text" class="settings-input" placeholder="Имя пользователя">
-            <button id="btn-send-invite" class="btn-primary btn-sm">Пригласить</button>
-          </div>
-          <div id="share-invites-list" class="share-list"></div>
-        </div>
-
-        <!-- Incoming invites -->
-        <div class="settings-section" id="invites-section">
-          <div class="settings-section-title">Входящие приглашения</div>
-          <div id="incoming-invites-list"></div>
-        </div>
-
         <div class="settings-section">
           <div class="settings-section-title">Опасная зона</div>
           <div class="settings-item">
             <div class="settings-item-info">
               <div class="settings-item-name">Очистить все данные</div>
-              <div class="settings-item-desc">Удалить все места, посещения и маршруты</div>
+              <div class="settings-item-desc">Удалить все места, посещения, шаблоны и поездки</div>
             </div>
             <button id="btn-clear-all" class="btn-danger btn-sm">Очистить</button>
-          </div>
-          <div class="settings-item" id="logout-section">
-            <div class="settings-item-info">
-              <div class="settings-item-name">Выйти из аккаунта</div>
-            </div>
-            <button id="btn-logout" class="btn-danger btn-sm">Выйти</button>
           </div>
         </div>
 
         <div id="settings-status" class="settings-status hidden"></div>
-
       </div>
     </div>
   </div>
 
-  <!-- AUTH MODAL -->
+  <!-- AUTH MODAL (kept for compatibility) -->
   <div id="auth-modal" class="auth-modal hidden" role="dialog" aria-modal="true">
     <div class="auth-card">
-      <div class="auth-logo"><i data-lucide="heart" class="icon" style="color:var(--color-place)"></i> Список желаний</div>
+      <div class="auth-logo"><i data-lucide="map-pin" class="icon" style="color:var(--color-place)"></i> Планер</div>
       <div class="auth-tabs">
         <button id="auth-tab-login" class="auth-tab active">Войти</button>
         <button id="auth-tab-register" class="auth-tab">Регистрация</button>
@@ -595,8 +528,11 @@
   <script src="js/auth.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/seed.js"></script>
+  <script src="js/metro_data.js"></script>
   <script src="js/map.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/templates.js"></script>
+  <script src="js/trips.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
