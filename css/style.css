@@ -1283,11 +1283,11 @@ a { color: inherit; }
 /* ===== Utility ===== */
 .hidden { display: none !important; }
 
-/* ===== Desktop adjustments ===== */
-@media (min-width: 768px) {
+/* ===== Tablet: centered mobile shell (768–899px) ===== */
+@media (min-width: 768px) and (max-width: 899px) {
   #app { max-width: 480px; margin: 0 auto; position: relative; height: 100dvh; }
   .modal-sheet { max-width: 480px; left: 50%; transform: translateX(-50%); border-radius: var(--radius); bottom: 20px; }
-  body { background: var(--bg); }
+  body { background: #e8edf2; }
 }
 
 /* ===== Auth modal ===== */
@@ -1724,3 +1724,237 @@ a { color: inherit; }
 .poi-museum     { border-color: #8e44ad; }
 .poi-historic   { border-color: #2c3e50; }
 .poi-park       { border-color: #27ae60; }
+
+/* ====================================================
+   DESKTOP LAYOUT (≥ 900px)
+   ==================================================== */
+@media (min-width: 900px) {
+
+  /* ── App shell: CSS grid, sidebar + content ── */
+  #app {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: var(--topbar-h) 1fr;
+    grid-template-areas:
+      "sidebar topbar"
+      "sidebar main";
+    max-width: none;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  #topbar {
+    grid-area: topbar;
+    padding: 0 28px;
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+  }
+  #topbar h1 { font-size: 20px; }
+
+  #main { grid-area: main; }
+
+  /* ── Bottom nav → left sidebar ── */
+  #bottom-nav {
+    grid-area: sidebar;
+    height: auto;            /* fills grid area naturally */
+    flex-direction: column;
+    align-items: stretch;
+    width: 240px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    padding: 0;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow-y: auto;
+  }
+
+  /* App name at top of sidebar */
+  #bottom-nav::before {
+    content: "Планер";
+    display: flex;
+    align-items: center;
+    height: var(--topbar-h);
+    padding: 0 20px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    color: var(--text);
+  }
+
+  /* Nav buttons: horizontal rows in sidebar */
+  .nav-btn {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 13px 20px;
+    border-radius: 10px;
+    margin: 2px 8px;
+    min-height: 50px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .nav-btn:hover:not(.active) { background: var(--bg); }
+  .nav-btn.active {
+    background: var(--color-place-light);
+    color: var(--color-place);
+  }
+  .nav-icon .icon { width: 20px; height: 20px; }
+  .nav-label { font-size: 14px; font-weight: 500; }
+
+  /* User FAB: pin to bottom-left (inside sidebar visually) */
+  .user-fab {
+    position: fixed;
+    left: 16px;
+    right: auto;
+    bottom: 16px;
+  }
+
+  /* ── Views ── */
+  .view { padding-bottom: 24px; }
+  #view-walk, #view-map, #view-route { padding-bottom: 0; }
+
+  /* ── Places: responsive card grid ── */
+  .wish-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px 28px;
+  }
+  /* Prevent single card from stretching too wide */
+  .wish-card { max-width: 600px; }
+
+  /* Status tabs and chips */
+  .status-filter-tabs { padding: 14px 28px 8px; gap: 10px; }
+  .status-tab { flex: 0 0 auto; padding: 8px 20px; }
+  .type-chips { padding: 10px 28px; gap: 10px; }
+  .subtabs { padding: 14px 28px 0; }
+  .empty-state { padding: 80px 32px; }
+
+  /* ── Templates: 2-column grid ── */
+  .templates-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px 28px;
+  }
+
+  /* ── Trips: 2-column grid ── */
+  .trips-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px 28px;
+  }
+
+  /* ── Walk view: horizontal split ── */
+  #view-walk.active {
+    display: grid !important;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+  }
+
+  /* Left column: POI bar (row 1) */
+  #view-walk .poi-layer-bar {
+    grid-column: 1;
+    grid-row: 1;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  /* Left column: walk panel (row 2) */
+  #view-walk #walk-panel {
+    grid-column: 1;
+    grid-row: 2;
+    max-height: none;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+  }
+
+  /* Right column: map spans both rows */
+  #view-walk #walk-map {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* Walk route panel stays sticky at bottom of left column */
+  .walk-route-panel { position: sticky; bottom: 0; }
+
+  /* ── Modals: centered dialog instead of bottom sheet ── */
+  .modal {
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+  .modal-sheet {
+    max-width: 600px;
+    max-height: 88dvh;
+    width: 100%;
+    border-radius: var(--radius) !important;
+    /* Reset mobile bottom-sheet positioning */
+    left: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    animation: desktopModalIn 0.2s ease;
+  }
+  .modal-sheet-tall { max-height: 88dvh; }
+  .modal-handle { display: none; }
+
+  @keyframes desktopModalIn {
+    from { opacity: 0; transform: scale(0.97) translateY(-8px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+  }
+
+  /* Wider modals for complex forms (trip editor, template editor) */
+  .modal-sheet-wide { max-width: 800px; }
+
+  /* ── Issue popup: account for sidebar ── */
+  .issue-popup {
+    bottom: 16px;
+    left: calc(240px + 16px);
+    right: 16px;
+  }
+
+  /* ── Toast: avoid sidebar area ── */
+  .walk-toast {
+    bottom: 24px;
+    left: calc(240px + 50%);
+    transform: translateX(-50%) translateY(12px);
+  }
+  .walk-toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── Map popup: slightly wider on desktop ── */
+  .map-popup { min-width: 220px; }
+
+  /* ── Topbar add button: text label on desktop ── */
+  #btn-add {
+    width: auto;
+    border-radius: var(--radius-sm);
+    padding: 0 16px;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  #btn-add::after { content: "Добавить"; }
+
+  /* ── Hover states (no :active-only on desktop) ── */
+  .wish-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+  .trip-card:hover { box-shadow: var(--shadow-lg); }
+  .template-card:hover { box-shadow: var(--shadow-lg); }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-card-primary:hover { opacity: 0.88; }
+  .poi-chip:hover:not(.poi-chip--active) { background: var(--bg); }
+}
